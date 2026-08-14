@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contracheque</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink: #14171f;
+    --ink-2: #1c202c;
+    --ink-3: #262b3a;
+    --brass: #c9a24b;
+    --brass-dim: #8c7130;
+    --paper: #f3efe4;
+    --mist: #9ba3b4;
+    --ok: #6fa97a;
+    --err: #e08579;
+    --focus: #e3c274;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin: 0;
+    padding: 0;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+  }
+
+  body{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 80px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  .visually-hidden{
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  a{ color: inherit; }
+
+  :focus-visible{
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  header.topo{
+    max-width: 760px;
+    width: 100%;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .eyebrow{
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--brass);
+    font-weight: 600;
+    margin: 0 0 8px;
+  }
+
+  h1.wordmark{
+    font-family: 'Fraunces', serif;
+    font-optical-sizing: auto;
+    font-weight: 700;
+    font-size: clamp(30px, 6vw, 42px);
+    line-height: 1;
+    margin: 0;
+    color: var(--paper);
+  }
+
+  .email-usuario{
+    font-size: 13px;
+    color: var(--mist);
+    overflow-wrap: anywhere;
+  }
+
+  .btn-sair{
+    background: transparent;
+    border: 1px solid var(--ink-3);
+    color: var(--mist);
+    border-radius: 7px;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .btn-sair:hover{ border-color: var(--brass); color: var(--brass); }
+
+  main{
+    width: 100%;
+    max-width: 760px;
+  }
+
+  /* ---------- Login (fallback, quando não há SSO na URL) ---------- */
+  .cartao-login{
+    background: var(--ink-2);
+    border: 1px solid var(--ink-3);
+    border-radius: 14px;
+    padding: 32px 28px;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+  .campo{ margin-bottom: 18px; }
+  .campo label{
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mist);
+    margin-bottom: 6px;
+  }
+  .campo input, .campo select, .campo textarea{
+    width: 100%;
+    background: var(--ink);
+    border: 1px solid var(--ink-3);
+    border-radius: 8px;
+    padding: 11px 13px;
+    color: var(--paper);
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .campo input:focus-visible, .campo select:focus-visible, .campo textarea:focus-visible{
+    border-color: var(--brass);
+  }
+  .btn-primario{
+    background: var(--brass);
+    color: var(--ink);
+    border: none;
+    border-radius: 8px;
+    padding: 11px 18px;
+    font-size: 14.5px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .btn-primario:hover{ background: var(--focus); }
+  .btn-primario:disabled{ opacity: 0.6; cursor: default; }
+
+  .btn-secundario{
+    background: transparent;
+    color: var(--paper);
+    border: 1px solid var(--ink-3);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .btn-secundario:hover{ border-color: var(--brass); color: var(--brass); }
+
+  .btn-perigo{
+    background: transparent;
+    color: var(--err);
+    border: 1px solid var(--ink-3);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .btn-perigo:hover{ border-color: var(--err); }
+
+  .status-msg{ min-height: 20px; font-size: 13.5px; margin-top: 12px; }
+  .status-msg[data-tipo="erro"]{ color: var(--err); }
+  .status-msg[data-tipo="ok"]{ color: var(--ok); }
+
+  /* ---------- Abas ---------- */
+  nav.abas{
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--ink-3);
+    margin-bottom: 24px;
+  }
+  nav.abas button{
+    background: transparent;
+    border: none;
+    color: var(--mist);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  nav.abas button[aria-selected="true"]{
+    color: var(--brass);
+    border-bottom-color: var(--brass);
+  }
+  nav.abas button:hover{ color: var(--paper); }
+
+  .painel-aba{ display: none; }
+  .painel-aba.ativo{ display: block; }
+
+  .cartao{
+    background: var(--ink-2);
+    border: 1px solid var(--ink-3);
+    border-radius: 12px;
+    padding: 22px 20px;
+    margin-bottom: 20px;
+  }
+
+  .cartao h2{
+    font-family: 'Fraunces', serif;
+    font-size: 19px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+
+  .cartao .subtexto{
+    color: var(--mist);
+    font-size: 13.5px;
+    margin: 0 0 16px;
+  }
+
+  .linha-form{
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+  .linha-form .campo{ flex: 1; min-width: 140px; margin-bottom: 0; }
+
+  table{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  th, td{
+    text-align: left;
+    padding: 9px 8px;
+    border-bottom: 1px solid var(--ink-3);
+  }
+  th{
+    color: var(--mist);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  td.numero{ text-align: right; font-variant-numeric: tabular-nums; }
+  th.numero{ text-align: right; }
+
+  .tabela-scroll{ overflow-x: auto; }
+
+  .badge{
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-ok{ background: rgba(111,169,122,0.18); color: var(--ok); }
+  .badge-divergente{ background: rgba(224,133,121,0.18); color: var(--err); }
+  .badge-provento{ background: rgba(111,169,122,0.15); color: var(--ok); }
+  .badge-desconto{ background: rgba(224,133,121,0.15); color: var(--err); }
+
+  .vazio{ color: var(--mist); font-size: 13.5px; }
+  .carregando{ color: var(--mist); font-size: 13.5px; }
+
+  .destaque-valor{
+    font-family: 'Fraunces', serif;
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--paper);
+  }
+
+  .grade-resumo{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
+    margin-bottom: 4px;
+  }
+  .grade-resumo .item{
+    background: var(--ink);
+    border: 1px solid var(--ink-3);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .grade-resumo .item .rotulo{
+    font-size: 12px;
+    color: var(--mist);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .grade-resumo .item .valor{
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  input[type="file"]{
+    color: var(--paper);
+    font-size: 13.5px;
+  }
+
+  fieldset{ border: none; padding: 0; margin: 0; }
+</style>
+</head>
+<body>
+
+<header class="topo">
+  <div>
+    <p class="eyebrow">Contracheque</p>
+    <h1 class="wordmark">Contracheque</h1>
+  </div>
+  <div id="blocoUsuario" class="visually-hidden">
+    <p class="email-usuario" id="emailUsuario"></p>
+    <button type="button" class="btn-sair" id="btnSair">Sair</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===== TELA DE LOGIN (fallback direto, sem vir do hub) ===== -->
+  <section id="telaLogin" class="cartao-login">
+    <h2 class="visually-hidden">Entrar</h2>
+    <form id="formLogin" novalidate>
+      <div class="campo">
+        <label for="campoEmail">E-mail</label>
+        <input type="email" id="campoEmail" name="email" autocomplete="username" required>
+      </div>
+      <div class="campo">
+        <label for="campoSenha">Senha</label>
+        <input type="password" id="campoSenha" name="senha" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn-primario" id="btnEntrar" style="width:100%;">Entrar</button>
+    </form>
+    <p class="status-msg" id="statusLogin" role="status" aria-live="polite"></p>
+  </section>
+
+  <!-- ===== APP (pós-login) ===== -->
+  <section id="telaApp" class="visually-hidden" aria-hidden="true">
+
+    <nav class="abas" role="tablist" aria-label="Seções do Contracheque">
+      <button type="button" role="tab" id="tabResumo" aria-controls="painelResumo" aria-selected="true">Resumo</button>
+      <button type="button" role="tab" id="tabLancamentos" aria-controls="painelLancamentos" aria-selected="false">Lançamentos do mês</button>
+      <button type="button" role="tab" id="tabOficial" aria-controls="painelOficial" aria-selected="false">Contracheque oficial</button>
+      <button type="button" role="tab" id="tabRubricas" aria-controls="painelRubricas" aria-selected="false">Rubricas</button>
+      <button type="button" role="tab" id="tabConfig" aria-controls="painelConfig" aria-selected="false">Configurações</button>
+    </nav>
+
+    <!-- ---------- RESUMO ---------- -->
+    <div class="painel-aba ativo" id="painelResumo" role="tabpanel" aria-labelledby="tabResumo">
+      <div class="cartao">
+        <h2>Salário-base atual</h2>
+        <p class="subtexto">Usado como referência para os cálculos automáticos.</p>
+        <p class="destaque-valor" id="valorSalarioBaseResumo">—</p>
+        <p class="vazio" id="vigenciaSalarioBaseResumo"></p>
+      </div>
+
+      <div class="cartao">
+        <h2>Mês corrente</h2>
+        <p class="subtexto" id="mesCorrenteLabel"></p>
+        <div class="grade-resumo">
+          <div class="item">
+            <div class="rotulo">Proventos lançados</div>
+            <div class="valor" id="resumoProventos">R$ 0,00</div>
+          </div>
+          <div class="item">
+            <div class="rotulo">Descontos lançados</div>
+            <div class="valor" id="resumoDescontos">R$ 0,00</div>
+          </div>
+          <div class="item">
+            <div class="rotulo">Líquido estimado</div>
+            <div class="valor" id="resumoLiquido">R$ 0,00</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- LANÇAMENTOS DO MÊS ---------- -->
+    <div class="painel-aba" id="painelLancamentos" role="tabpanel" aria-labelledby="tabLancamentos">
+      <div class="cartao">
+        <h2>Novo lançamento</h2>
+        <p class="subtexto">Registre eventos do mês (horas extras, faltas, atestados, etc.) conforme forem acontecendo.</p>
+        <form id="formLancamento" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="lancMes">Mês de referência</label>
+              <input type="month" id="lancMes" required>
+            </div>
+            <div class="campo">
+              <label for="lancRubrica">Rubrica</label>
+              <select id="lancRubrica">
+                <option value="">Sem rubrica específica</option>
+              </select>
+            </div>
+          </div>
+          <div class="linha-form" style="margin-top:12px;">
+            <div class="campo">
+              <label for="lancDescricao">Descrição</label>
+              <input type="text" id="lancDescricao" required placeholder="Ex.: Hora extra dia 12">
+            </div>
+            <div class="campo">
+              <label for="lancQuantidade">Quantidade (opcional)</label>
+              <input type="number" id="lancQuantidade" step="0.01" placeholder="Ex.: horas, dias">
+            </div>
+            <div class="campo">
+              <label for="lancValor">Valor calculado (opcional)</label>
+              <input type="number" id="lancValor" step="0.01" placeholder="R$">
+            </div>
+          </div>
+          <div class="campo" style="margin-top:12px;">
+            <label for="lancObs">Observações</label>
+            <textarea id="lancObs" rows="2"></textarea>
+          </div>
+          <button type="submit" class="btn-primario" id="btnSalvarLancamento">Adicionar lançamento</button>
+        </form>
+        <p class="status-msg" id="statusLancamento" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="cartao">
+        <h2>Lançamentos registrados</h2>
+        <div class="campo" style="max-width:220px;">
+          <label for="filtroMesLancamentos">Filtrar por mês</label>
+          <input type="month" id="filtroMesLancamentos">
+        </div>
+        <div class="tabela-scroll">
+          <table id="tabelaLancamentos">
+            <thead>
+              <tr>
+                <th>Mês</th><th>Rubrica</th><th>Descrição</th><th class="numero">Qtd.</th><th class="numero">Valor</th><th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="vazio" id="vazioLancamentos">Nenhum lançamento neste mês.</p>
+      </div>
+    </div>
+
+    <!-- ---------- CONTRACHEQUE OFICIAL ---------- -->
+    <div class="painel-aba" id="painelOficial" role="tabpanel" aria-labelledby="tabOficial">
+      <div class="cartao">
+        <h2>Enviar contracheque oficial</h2>
+        <p class="subtexto">Faça o upload do PDF emitido pela empresa para comparar com os lançamentos do mês.</p>
+        <form id="formUploadOficial" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="oficialMes">Mês de referência</label>
+              <input type="month" id="oficialMes" required>
+            </div>
+            <div class="campo">
+              <label for="oficialArquivo">Arquivo (PDF)</label>
+              <input type="file" id="oficialArquivo" accept="application/pdf" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primario" id="btnEnviarOficial" style="margin-top:12px;">Enviar documento</button>
+        </form>
+        <p class="status-msg" id="statusOficial" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="cartao">
+        <h2>Documentos enviados</h2>
+        <p class="subtexto">A extração automática por IA será conectada em uma próxima etapa (endpoint no Worker). Por enquanto, registre as linhas manualmente após o upload.</p>
+        <div class="tabela-scroll">
+          <table id="tabelaOficiais">
+            <thead>
+              <tr><th>Mês</th><th>Arquivo</th><th>Status</th><th class="numero">Líquido</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="vazio" id="vazioOficiais">Nenhum documento enviado ainda.</p>
+      </div>
+
+      <div class="cartao" id="cartaoDivergencias" style="display:none;">
+        <h2>Divergências — <span id="mesDivergencias"></span></h2>
+        <div class="tabela-scroll">
+          <table id="tabelaDivergencias">
+            <thead>
+              <tr><th>Rubrica</th><th>Descrição</th><th class="numero">Calculado</th><th class="numero">Oficial</th><th class="numero">Diferença</th><th>Status</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- RUBRICAS ---------- -->
+    <div class="painel-aba" id="painelRubricas" role="tabpanel" aria-labelledby="tabRubricas">
+      <div class="cartao">
+        <h2>Nova rubrica</h2>
+        <p class="subtexto">Cadastre códigos que ainda não constam no catálogo (ex.: hora extra, quando aparecer).</p>
+        <form id="formRubrica" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="rubCodigo">Código</label>
+              <input type="text" id="rubCodigo" required placeholder="Ex.: 1003">
+            </div>
+            <div class="campo">
+              <label for="rubDescricao">Descrição</label>
+              <input type="text" id="rubDescricao" required placeholder="Ex.: Hora extra 50%">
+            </div>
+            <div class="campo">
+              <label for="rubTipo">Tipo</label>
+              <select id="rubTipo" required>
+                <option value="provento">Provento</option>
+                <option value="desconto">Desconto</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn-primario" id="btnSalvarRubrica" style="margin-top:12px;">Adicionar rubrica</button>
+        </form>
+        <p class="status-msg" id="statusRubrica" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="cartao">
+        <h2>Catálogo de rubricas</h2>
+        <div class="tabela-scroll">
+          <table id="tabelaRubricas">
+            <thead>
+              <tr><th>Código</th><th>Descrição</th><th>Tipo</th><th>Origem</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- CONFIGURAÇÕES ---------- -->
+    <div class="painel-aba" id="painelConfig" role="tabpanel" aria-labelledby="tabConfig">
+      <div class="cartao">
+        <h2>Salário-base</h2>
+        <p class="subtexto">Atualize quando houver reajuste. O histórico de valores anteriores é mantido.</p>
+        <form id="formSalarioBase" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="sbValor">Novo valor (R$)</label>
+              <input type="number" id="sbValor" step="0.01" required>
+            </div>
+            <div class="campo">
+              <label for="sbVigencia">Vigente a partir de</label>
+              <input type="date" id="sbVigencia" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primario" id="btnSalvarSalario" style="margin-top:12px;">Salvar novo valor</button>
+        </form>
+        <p class="status-msg" id="statusSalario" role="status" aria-live="polite"></p>
+        <div class="tabela-scroll" style="margin-top:16px;">
+          <table id="tabelaHistoricoSalario">
+            <thead><tr><th>Vigência</th><th class="numero">Valor</th><th>Observação</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="cartao">
+        <h2>Parâmetros de cálculo</h2>
+        <p class="subtexto">Percentuais e valores usados nos cálculos automáticos (insalubridade, adicional por tempo de serviço, etc.).</p>
+        <form id="formParametro" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="parChave">Identificador</label>
+              <input type="text" id="parChave" required placeholder="Ex.: insalubridade">
+            </div>
+            <div class="campo">
+              <label for="parDescricao">Descrição</label>
+              <input type="text" id="parDescricao" placeholder="Ex.: Percentual de insalubridade">
+            </div>
+          </div>
+          <div class="linha-form" style="margin-top:12px;">
+            <div class="campo">
+              <label for="parTipo">Tipo</label>
+              <select id="parTipo">
+                <option value="percentual">Percentual</option>
+                <option value="fixo">Valor fixo</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="parValor">Valor</label>
+              <input type="number" id="parValor" step="0.01" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primario" id="btnSalvarParametro" style="margin-top:12px;">Salvar parâmetro</button>
+        </form>
+        <p class="status-msg" id="statusParametro" role="status" aria-live="polite"></p>
+        <div class="tabela-scroll" style="margin-top:16px;">
+          <table id="tabelaParametros">
+            <thead><tr><th>Identificador</th><th>Descrição</th><th class="numero">Valor</th><th>Vigência</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+<script>
+/* ==================== SUPABASE ==================== */
+const SUPABASE_URL = 'https://zlclakzjktpsbpfkltxa.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_o5Rn3Qp_C3boiYCRqQ5Ykw_2sNd3KiQ';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const HUB_URL = 'https://hub.fabioscheffer.workers.dev';
+const BUCKET_DOCUMENTOS = 'contracheque-documentos';
+
+let usuarioAtual = null;
+let cacheRubricas = [];
+
+/* ---------- Utilitários ---------- */
+function formatarMoeda(valor){
+  const n = Number(valor || 0);
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function mesAtualInput(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function mesParaData(mesInput){
+  return mesInput + '-01';
+}
+function dataParaMesLabel(dataStr){
+  const [ano, mes] = dataStr.split('-');
+  const nomes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  return nomes[parseInt(mes,10)-1] + '/' + ano;
+}
+
+/* ---------- Sessão / SSO vindo do hub ---------- */
+async function capturarSsoDaUrl(){
+  const hash = window.location.hash;
+  if(!hash || hash.indexOf('sso_access_token') === -1) return false;
+
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const accessToken = params.get('sso_access_token');
+  const refreshToken = params.get('sso_refresh_token');
+  if(!accessToken || !refreshToken) return false;
+
+  const { error } = await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  return !error;
+}
+
+function mostrarTela(tela){
+  const telaLogin = document.getElementById('telaLogin');
+  const telaApp = document.getElementById('telaApp');
+  const blocoUsuario = document.getElementById('blocoUsuario');
+  if(tela === 'login'){
+    telaLogin.classList.remove('visually-hidden');
+    telaLogin.setAttribute('aria-hidden', 'false');
+    telaApp.classList.add('visually-hidden');
+    telaApp.setAttribute('aria-hidden', 'true');
+    blocoUsuario.classList.add('visually-hidden');
+  } else {
+    telaApp.classList.remove('visually-hidden');
+    telaApp.setAttribute('aria-hidden', 'false');
+    telaLogin.classList.add('visually-hidden');
+    telaLogin.setAttribute('aria-hidden', 'true');
+    blocoUsuario.classList.remove('visually-hidden');
+  }
+}
+
+async function entrarNoApp(session){
+  usuarioAtual = session.user;
+  document.getElementById('emailUsuario').textContent = session.user.email;
+  mostrarTela('app');
+  document.getElementById('lancMes').value = mesAtualInput();
+  document.getElementById('filtroMesLancamentos').value = mesAtualInput();
+  document.getElementById('oficialMes').value = mesAtualInput();
+  await carregarTudo();
+}
+
+document.getElementById('formLogin').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const email = document.getElementById('campoEmail').value.trim();
+  const senha = document.getElementById('campoSenha').value;
+  const btn = document.getElementById('btnEntrar');
+  const status = document.getElementById('statusLogin');
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  status.dataset.tipo = ''; status.textContent = '';
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: senha });
+  btn.disabled = false; btn.textContent = 'Entrar';
+
+  if(error){
+    status.dataset.tipo = 'erro';
+    status.textContent = 'E-mail ou senha incorretos.';
+    return;
+  }
+  await entrarNoApp(data.session);
+});
+
+document.getElementById('btnSair').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  window.location.href = HUB_URL;
+});
+
+/* ---------- Abas ---------- */
+const abas = ['Resumo','Lancamentos','Oficial','Rubricas','Config'];
+abas.forEach(nome => {
+  document.getElementById('tab' + nome).addEventListener('click', () => {
+    abas.forEach(outra => {
+      const btnOutra = document.getElementById('tab' + outra);
+      const painelOutra = document.getElementById('painel' + outra);
+      const ativa = outra === nome;
+      btnOutra.setAttribute('aria-selected', ativa ? 'true' : 'false');
+      painelOutra.classList.toggle('ativo', ativa);
+    });
+  });
+});
+
+/* ==================== CARREGAMENTO GERAL ==================== */
+async function carregarTudo(){
+  await Promise.all([
+    carregarSalarioBase(),
+    carregarParametros(),
+    carregarRubricas(),
+    carregarOficiais()
+  ]);
+  await carregarLancamentos();
+}
+
+/* ---------- Salário-base ---------- */
+async function carregarSalarioBase(){
+  const { data, error } = await sb
+    .from('contracheque_salario_base')
+    .select('*')
+    .order('vigencia_inicio', { ascending: false });
+
+  const corpo = document.querySelector('#tabelaHistoricoSalario tbody');
+  if(error){
+    corpo.innerHTML = '<tr><td colspan="3" class="vazio">Erro ao carregar: ' + error.message + '</td></tr>';
+    return;
+  }
+  if(!data || data.length === 0){
+    corpo.innerHTML = '<tr><td colspan="3" class="vazio">Nenhum valor cadastrado ainda.</td></tr>';
+    document.getElementById('valorSalarioBaseResumo').textContent = '—';
+    return;
+  }
+
+  const atual = data[0];
+  document.getElementById('valorSalarioBaseResumo').textContent = formatarMoeda(atual.valor);
+  document.getElementById('vigenciaSalarioBaseResumo').textContent = 'Vigente desde ' + new Date(atual.vigencia_inicio + 'T00:00:00').toLocaleDateString('pt-BR');
+
+  corpo.innerHTML = data.map(row => `
+    <tr>
+      <td>${new Date(row.vigencia_inicio + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+      <td class="numero">${formatarMoeda(row.valor)}</td>
+      <td>${row.observacao || ''}</td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('formSalarioBase').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const valor = parseFloat(document.getElementById('sbValor').value);
+  const vigencia = document.getElementById('sbVigencia').value;
+  const status = document.getElementById('statusSalario');
+  const btn = document.getElementById('btnSalvarSalario');
+
+  if(isNaN(valor) || !vigencia){
+    status.dataset.tipo = 'erro'; status.textContent = 'Preencha valor e vigência.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const { error } = await sb.from('contracheque_salario_base').insert({
+    valor, vigencia_inicio: vigencia, observacao: 'Atualizado manualmente'
+  });
+  btn.disabled = false; btn.textContent = 'Salvar novo valor';
+
+  if(error){
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro: ' + error.message;
+    return;
+  }
+  status.dataset.tipo = 'ok'; status.textContent = 'Salário-base atualizado.';
+  document.getElementById('formSalarioBase').reset();
+  await carregarSalarioBase();
+});
+
+/* ---------- Parâmetros de cálculo ---------- */
+async function carregarParametros(){
+  const { data, error } = await sb
+    .from('contracheque_parametros_calculo')
+    .select('*')
+    .order('chave', { ascending: true });
+
+  const corpo = document.querySelector('#tabelaParametros tbody');
+  if(error){
+    corpo.innerHTML = '<tr><td colspan="4" class="vazio">Erro ao carregar: ' + error.message + '</td></tr>';
+    return;
+  }
+  if(!data || data.length === 0){
+    corpo.innerHTML = '<tr><td colspan="4" class="vazio">Nenhum parâmetro cadastrado.</td></tr>';
+    return;
+  }
+  corpo.innerHTML = data.map(row => `
+    <tr>
+      <td>${row.chave}</td>
+      <td>${row.descricao || ''}</td>
+      <td class="numero">${row.tipo_valor === 'percentual' ? row.valor + '%' : formatarMoeda(row.valor)}</td>
+      <td>${new Date(row.vigencia_inicio + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('formParametro').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const chave = document.getElementById('parChave').value.trim();
+  const descricao = document.getElementById('parDescricao').value.trim();
+  const tipo_valor = document.getElementById('parTipo').value;
+  const valor = parseFloat(document.getElementById('parValor').value);
+  const status = document.getElementById('statusParametro');
+  const btn = document.getElementById('btnSalvarParametro');
+
+  if(!chave || isNaN(valor)){
+    status.dataset.tipo = 'erro'; status.textContent = 'Preencha identificador e valor.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const { error } = await sb.from('contracheque_parametros_calculo').insert({
+    chave, descricao, tipo_valor, valor, vigencia_inicio: new Date().toISOString().slice(0,10)
+  });
+  btn.disabled = false; btn.textContent = 'Salvar parâmetro';
+
+  if(error){
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro: ' + error.message;
+    return;
+  }
+  status.dataset.tipo = 'ok'; status.textContent = 'Parâmetro salvo.';
+  document.getElementById('formParametro').reset();
+  await carregarParametros();
+});
+
+/* ---------- Rubricas ---------- */
+async function carregarRubricas(){
+  const { data, error } = await sb
+    .from('contracheque_rubricas_catalogo')
+    .select('*')
+    .order('codigo', { ascending: true });
+
+  const corpo = document.querySelector('#tabelaRubricas tbody');
+  const seletor = document.getElementById('lancRubrica');
+
+  if(error){
+    corpo.innerHTML = '<tr><td colspan="5" class="vazio">Erro ao carregar: ' + error.message + '</td></tr>';
+    return;
+  }
+
+  cacheRubricas = data || [];
+
+  seletor.innerHTML = '<option value="">Sem rubrica específica</option>' +
+    cacheRubricas.map(r => `<option value="${r.codigo}">${r.codigo} — ${r.descricao}</option>`).join('');
+
+  if(cacheRubricas.length === 0){
+    corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhuma rubrica cadastrada.</td></tr>';
+    return;
+  }
+
+  corpo.innerHTML = cacheRubricas.map(r => `
+    <tr>
+      <td>${r.codigo}</td>
+      <td>${r.descricao}</td>
+      <td><span class="badge badge-${r.tipo}">${r.tipo === 'provento' ? 'Provento' : 'Desconto'}</span></td>
+      <td>${r.origem === 'ia' ? 'IA' : 'Manual'}</td>
+      <td><button type="button" class="btn-perigo" data-id="${r.id}" data-acao="excluir-rubrica">Excluir</button></td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('formRubrica').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const codigo = document.getElementById('rubCodigo').value.trim();
+  const descricao = document.getElementById('rubDescricao').value.trim();
+  const tipo = document.getElementById('rubTipo').value;
+  const status = document.getElementById('statusRubrica');
+  const btn = document.getElementById('btnSalvarRubrica');
+
+  if(!codigo || !descricao){
+    status.dataset.tipo = 'erro'; status.textContent = 'Preencha código e descrição.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const { error } = await sb.from('contracheque_rubricas_catalogo').insert({
+    codigo, descricao, tipo, origem: 'manual'
+  });
+  btn.disabled = false; btn.textContent = 'Adicionar rubrica';
+
+  if(error){
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro: ' + error.message;
+    return;
+  }
+  status.dataset.tipo = 'ok'; status.textContent = 'Rubrica adicionada.';
+  document.getElementById('formRubrica').reset();
+  await carregarRubricas();
+});
+
+document.querySelector('#tabelaRubricas tbody').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-acao="excluir-rubrica"]');
+  if(!btn) return;
+  if(!confirm('Excluir esta rubrica do catálogo?')) return;
+  await sb.from('contracheque_rubricas_catalogo').delete().eq('id', btn.dataset.id);
+  await carregarRubricas();
+});
+
+/* ---------- Lançamentos do mês ---------- */
+async function carregarLancamentos(){
+  const mesInput = document.getElementById('filtroMesLancamentos').value || mesAtualInput();
+  const mesData = mesParaData(mesInput);
+
+  const { data, error } = await sb
+    .from('contracheque_lancamentos_mes')
+    .select('*')
+    .eq('mes_referencia', mesData)
+    .order('created_at', { ascending: false });
+
+  const corpo = document.querySelector('#tabelaLancamentos tbody');
+  const vazio = document.getElementById('vazioLancamentos');
+
+  if(error){
+    corpo.innerHTML = '';
+    vazio.textContent = 'Erro ao carregar: ' + error.message;
+    vazio.style.display = 'block';
+    return;
+  }
+
+  if(!data || data.length === 0){
+    corpo.innerHTML = '';
+    vazio.style.display = 'block';
+  } else {
+    vazio.style.display = 'none';
+    corpo.innerHTML = data.map(l => `
+      <tr>
+        <td>${dataParaMesLabel(l.mes_referencia)}</td>
+        <td>${l.rubrica_codigo || '—'}</td>
+        <td>${l.descricao}</td>
+        <td class="numero">${l.quantidade != null ? l.quantidade : ''}</td>
+        <td class="numero">${l.valor_calculado != null ? formatarMoeda(l.valor_calculado) : ''}</td>
+        <td><button type="button" class="btn-perigo" data-id="${l.id}" data-acao="excluir-lancamento">Excluir</button></td>
+      </tr>
+    `).join('');
+  }
+
+  atualizarResumoMes(data || [], mesInput);
+}
+
+function atualizarResumoMes(lancamentos, mesInput){
+  document.getElementById('mesCorrenteLabel').textContent = 'Referente a ' + dataParaMesLabel(mesParaData(mesInput));
+
+  let proventos = 0, descontos = 0;
+  lancamentos.forEach(l => {
+    if(l.valor_calculado == null) return;
+    const rub = cacheRubricas.find(r => r.codigo === l.rubrica_codigo);
+    if(rub && rub.tipo === 'desconto'){
+      descontos += Number(l.valor_calculado);
+    } else {
+      proventos += Number(l.valor_calculado);
+    }
+  });
+
+  document.getElementById('resumoProventos').textContent = formatarMoeda(proventos);
+  document.getElementById('resumoDescontos').textContent = formatarMoeda(descontos);
+  document.getElementById('resumoLiquido').textContent = formatarMoeda(proventos - descontos);
+}
+
+document.getElementById('filtroMesLancamentos').addEventListener('change', carregarLancamentos);
+
+document.getElementById('formLancamento').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const mes = document.getElementById('lancMes').value;
+  const rubrica = document.getElementById('lancRubrica').value || null;
+  const descricao = document.getElementById('lancDescricao').value.trim();
+  const quantidade = document.getElementById('lancQuantidade').value;
+  const valor = document.getElementById('lancValor').value;
+  const obs = document.getElementById('lancObs').value.trim();
+  const status = document.getElementById('statusLancamento');
+  const btn = document.getElementById('btnSalvarLancamento');
+
+  if(!mes || !descricao){
+    status.dataset.tipo = 'erro'; status.textContent = 'Preencha ao menos mês e descrição.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const { error } = await sb.from('contracheque_lancamentos_mes').insert({
+    mes_referencia: mesParaData(mes),
+    rubrica_codigo: rubrica,
+    descricao,
+    quantidade: quantidade ? parseFloat(quantidade) : null,
+    valor_calculado: valor ? parseFloat(valor) : null,
+    observacoes: obs || null
+  });
+  btn.disabled = false; btn.textContent = 'Adicionar lançamento';
+
+  if(error){
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro: ' + error.message;
+    return;
+  }
+  status.dataset.tipo = 'ok'; status.textContent = 'Lançamento adicionado.';
+  document.getElementById('formLancamento').reset();
+  document.getElementById('lancMes').value = mes;
+  document.getElementById('filtroMesLancamentos').value = mes;
+  await carregarLancamentos();
+});
+
+document.querySelector('#tabelaLancamentos tbody').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-acao="excluir-lancamento"]');
+  if(!btn) return;
+  if(!confirm('Excluir este lançamento?')) return;
+  await sb.from('contracheque_lancamentos_mes').delete().eq('id', btn.dataset.id);
+  await carregarLancamentos();
+});
+
+/* ---------- Contracheque oficial (upload) ---------- */
+async function carregarOficiais(){
+  const { data, error } = await sb
+    .from('contracheque_documentos_oficiais')
+    .select('*')
+    .order('mes_referencia', { ascending: false });
+
+  const corpo = document.querySelector('#tabelaOficiais tbody');
+  const vazio = document.getElementById('vazioOficiais');
+
+  if(error){
+    corpo.innerHTML = '';
+    vazio.textContent = 'Erro ao carregar: ' + error.message;
+    vazio.style.display = 'block';
+    return;
+  }
+
+  if(!data || data.length === 0){
+    corpo.innerHTML = '';
+    vazio.style.display = 'block';
+    return;
+  }
+
+  vazio.style.display = 'none';
+  const statusLabel = { pendente: 'Pendente', extraido: 'Extraído', confirmado: 'Confirmado', erro: 'Erro' };
+  corpo.innerHTML = data.map(d => `
+    <tr>
+      <td>${dataParaMesLabel(d.mes_referencia)}</td>
+      <td>${d.nome_arquivo}</td>
+      <td>${statusLabel[d.status_extracao] || d.status_extracao}</td>
+      <td class="numero">${d.pagamento_liquido != null ? formatarMoeda(d.pagamento_liquido) : '—'}</td>
+      <td><button type="button" class="btn-perigo" data-id="${d.id}" data-acao="excluir-oficial">Excluir</button></td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('formUploadOficial').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const mes = document.getElementById('oficialMes').value;
+  const arquivo = document.getElementById('oficialArquivo').files[0];
+  const status = document.getElementById('statusOficial');
+  const btn = document.getElementById('btnEnviarOficial');
+
+  if(!mes || !arquivo){
+    status.dataset.tipo = 'erro'; status.textContent = 'Selecione o mês e o arquivo PDF.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  status.dataset.tipo = ''; status.textContent = '';
+
+  const caminho = usuarioAtual.id + '/' + mes + '-' + Date.now() + '-' + arquivo.name;
+
+  const { error: erroUpload } = await sb.storage.from(BUCKET_DOCUMENTOS).upload(caminho, arquivo, {
+    contentType: 'application/pdf'
+  });
+
+  if(erroUpload){
+    btn.disabled = false; btn.textContent = 'Enviar documento';
+    status.dataset.tipo = 'erro';
+    status.textContent = 'Erro ao enviar arquivo: ' + erroUpload.message + '. Verifique se o bucket "' + BUCKET_DOCUMENTOS + '" existe no Supabase Storage.';
+    return;
+  }
+
+  const { error: erroInsert } = await sb.from('contracheque_documentos_oficiais').insert({
+    mes_referencia: mesParaData(mes),
+    nome_arquivo: arquivo.name,
+    storage_path: caminho,
+    status_extracao: 'pendente'
+  });
+
+  btn.disabled = false; btn.textContent = 'Enviar documento';
+
+  if(erroInsert){
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro ao registrar documento: ' + erroInsert.message;
+    return;
+  }
+
+  status.dataset.tipo = 'ok';
+  status.textContent = 'Documento enviado. A extração automática por IA ainda será conectada — por ora, os itens podem ser conferidos manualmente.';
+  document.getElementById('formUploadOficial').reset();
+  document.getElementById('oficialMes').value = mes;
+  await carregarOficiais();
+});
+
+document.querySelector('#tabelaOficiais tbody').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-acao="excluir-oficial"]');
+  if(!btn) return;
+  if(!confirm('Excluir este documento e suas divergências associadas?')) return;
+  await sb.from('contracheque_documentos_oficiais').delete().eq('id', btn.dataset.id);
+  await carregarOficiais();
+});
+
+/* ==================== INICIALIZAÇÃO ==================== */
+(async function iniciar(){
+  await capturarSsoDaUrl();
+
+  sb.auth.onAuthStateChange((_evento, session) => {
+    if(session){
+      entrarNoApp(session);
+    } else {
+      mostrarTela('login');
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
