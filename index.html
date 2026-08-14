@@ -332,27 +332,18 @@
   </div>
   <div id="blocoUsuario" class="visually-hidden">
     <p class="email-usuario" id="emailUsuario"></p>
+    <a class="btn-sair" id="linkHub" href="https://hub.fabioscheffer.workers.dev" style="text-decoration:none;display:inline-block;margin-right:8px;">🏠 Hub</a>
     <button type="button" class="btn-sair" id="btnSair">Sair</button>
   </div>
 </header>
 
 <main>
 
-  <!-- ===== TELA DE LOGIN (fallback direto, sem vir do hub) ===== -->
+  <!-- ===== TELA SEM SESSÃO: o login é feito pelo Hub ===== -->
   <section id="telaLogin" class="cartao-login">
-    <h2 class="visually-hidden">Entrar</h2>
-    <form id="formLogin" novalidate>
-      <div class="campo">
-        <label for="campoEmail">E-mail</label>
-        <input type="email" id="campoEmail" name="email" autocomplete="username" required>
-      </div>
-      <div class="campo">
-        <label for="campoSenha">Senha</label>
-        <input type="password" id="campoSenha" name="senha" autocomplete="current-password" required>
-      </div>
-      <button type="submit" class="btn-primario" id="btnEntrar" style="width:100%;">Entrar</button>
-    </form>
-    <p class="status-msg" id="statusLogin" role="status" aria-live="polite"></p>
+    <h2 style="font-family:'Fraunces',serif;font-size:20px;margin:0 0 8px;">Entrar</h2>
+    <p class="subtexto" style="margin-bottom:20px;">O login agora é feito pelo Hub. Entre por lá e clique no módulo Contracheque para acessar.</p>
+    <a class="btn-primario" href="https://hub.fabioscheffer.workers.dev" style="display:block;width:100%;text-align:center;text-decoration:none;box-sizing:border-box;">🏠 Ir para o Hub</a>
   </section>
 
   <!-- ===== APP (pós-login) ===== -->
@@ -688,26 +679,6 @@ async function entrarNoApp(session){
   document.getElementById('oficialMes').value = mesAtualInput();
   await carregarTudo();
 }
-
-document.getElementById('formLogin').addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  const email = document.getElementById('campoEmail').value.trim();
-  const senha = document.getElementById('campoSenha').value;
-  const btn = document.getElementById('btnEntrar');
-  const status = document.getElementById('statusLogin');
-  btn.disabled = true; btn.textContent = 'Entrando…';
-  status.dataset.tipo = ''; status.textContent = '';
-
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: senha });
-  btn.disabled = false; btn.textContent = 'Entrar';
-
-  if(error){
-    status.dataset.tipo = 'erro';
-    status.textContent = 'E-mail ou senha incorretos.';
-    return;
-  }
-  await entrarNoApp(data.session);
-});
 
 document.getElementById('btnSair').addEventListener('click', async () => {
   await sb.auth.signOut();
