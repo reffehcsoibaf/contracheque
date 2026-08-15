@@ -427,9 +427,16 @@
 
     <!-- ---------- LANÇAMENTOS DO MÊS ---------- -->
     <div class="painel-aba" id="painelLancamentos" role="tabpanel" aria-labelledby="tabLancamentos">
-      <div class="cartao">
+      <div class="cartao" id="cartaoStatusMes">
+        <h2>Status do mês</h2>
+        <p class="subtexto" id="statusMesTexto">Selecione um mês para ver o status.</p>
+        <button type="button" class="btn-primario" id="btnConfirmarMes" style="display:none;">Confirmar conforme o oficial</button>
+        <button type="button" class="btn-secundario" id="btnReabrirMes" style="display:none;">Reabrir mês para edição</button>
+      </div>
+
+      <div class="cartao" id="cartaoNovoLancamento">
         <h2>Novo lançamento</h2>
-        <p class="subtexto">Registre eventos do mês (horas extras, faltas, atestados, etc.) conforme forem acontecendo.</p>
+        <p class="subtexto">Registre eventos do mês (horas extras, faltas, atestados, etc.) conforme forem acontecendo. Fica disponível até você confirmar o mês contra o contracheque oficial.</p>
         <form id="formLancamento" novalidate>
           <div class="linha-form">
             <div class="campo">
@@ -1133,6 +1140,8 @@ async function carregarLancamentos(){
   const mesInput = document.getElementById('filtroMesLancamentos').value || mesAtualInput();
   const mesData = mesParaData(mesInput);
 
+  const confirmado = await carregarStatusMes(mesData);
+
   const { data, error } = await sb
     .from('contracheque_lancamentos_mes')
     .select('*')
@@ -1161,7 +1170,7 @@ async function carregarLancamentos(){
         <td>${l.descricao}</td>
         <td class="numero">${l.quantidade != null ? l.quantidade : ''}</td>
         <td class="numero">${l.valor_calculado != null ? formatarMoeda(l.valor_calculado) : ''}</td>
-        <td><button type="button" class="btn-perigo" data-id="${l.id}" data-acao="excluir-lancamento">Excluir</button></td>
+        <td>${confirmado ? '' : `<button type="button" class="btn-perigo" data-id="${l.id}" data-acao="excluir-lancamento">Excluir</button>`}</td>
       </tr>
     `).join('');
   }
@@ -1170,6 +1179,69 @@ async function carregarLancamentos(){
   await atualizarCalculoAutomatico(data || []);
   await carregarItensOficiaisDoMes(mesData);
 }
+
+/* ---------- Confirmação / trava do mês ---------- */
+async function carregarStatusMes(mesData){
+  const { data, error } = await sb
+    .from('contracheque_meses_confirmados')
+    .select('confirmado_em')
+    .eq('mes_referencia', mesData)
+    .maybeSingle();
+
+  const confirmado = !error && !!data;
+  aplicarEstadoMes(confirmado, data ? data.confirmado_em : null);
+  return confirmado;
+}
+
+function aplicarEstadoMes(confirmado, confirmadoEm){
+  const texto = document.getElementById('statusMesTexto');
+  const btnConfirmar = document.getElementById('btnConfirmarMes');
+  const btnReabrir = document.getElementById('btnReabrirMes');
+  const cartaoNovo = document.getElementById('cartaoNovoLancamento');
+  const form = document.getElementById('formLancamento');
+  const camposForm = form.querySelectorAll('input, select, textarea, button');
+
+  if(confirmado){
+    const dataFmt = new Date(confirmadoEm).toLocaleDateString('pt-BR');
+    texto.textContent = 'Mês confirmado em ' + dataFmt + ' — conferido contra o contracheque oficial. Lançamentos ficam somente leitura.';
+    btnConfirmar.style.display = 'none';
+    btnReabrir.style.display = 'inline-block';
+    cartaoNovo.style.opacity = '0.6';
+    camposForm.forEach(el => el.disabled = true);
+  } else {
+    texto.textContent = 'Mês em aberto — você pode lançar itens livremente até confirmar contra o contracheque oficial.';
+    btnConfirmar.style.display = 'inline-block';
+    btnReabrir.style.display = 'none';
+    cartaoNovo.style.opacity = '1';
+    camposForm.forEach(el => el.disabled = false);
+  }
+}
+
+document.getElementById('btnConfirmarMes').addEventListener('click', async () => {
+  const mesInput = document.getElementById('filtroMesLancamentos').value || mesAtualInput();
+  const mesData = mesParaData(mesInput);
+  if(!confirm('Confirmar ' + dataParaMesLabel(mesData) + ' como conforme o contracheque oficial? Os lançamentos desse mês ficarão somente leitura.')) return;
+
+  const { error } = await sb.from('contracheque_meses_confirmados').insert({ mes_referencia: mesData });
+  if(error){
+    alert('Erro ao confirmar o mês: ' + error.message);
+    return;
+  }
+  await carregarLancamentos();
+});
+
+document.getElementById('btnReabrirMes').addEventListener('click', async () => {
+  const mesInput = document.getElementById('filtroMesLancamentos').value || mesAtualInput();
+  const mesData = mesParaData(mesInput);
+  if(!confirm('Reabrir ' + dataParaMesLabel(mesData) + ' para edição?')) return;
+
+  const { error } = await sb.from('contracheque_meses_confirmados').delete().eq('mes_referencia', mesData);
+  if(error){
+    alert('Erro ao reabrir o mês: ' + error.message);
+    return;
+  }
+  await carregarLancamentos();
+});
 
 async function carregarItensOficiaisDoMes(mesData){
   const corpo = document.querySelector('#tabelaItensOficiaisMes tbody');
@@ -1262,6 +1334,17 @@ document.getElementById('formLancamento').addEventListener('submit', async (ev) 
 
   if(!mes || !descricao){
     status.dataset.tipo = 'erro'; status.textContent = 'Preencha ao menos mês e descrição.';
+    return;
+  }
+
+  const { data: jaConfirmado } = await sb
+    .from('contracheque_meses_confirmados')
+    .select('id')
+    .eq('mes_referencia', mesParaData(mes))
+    .maybeSingle();
+  if(jaConfirmado){
+    status.dataset.tipo = 'erro';
+    status.textContent = 'Este mês já foi confirmado contra o contracheque oficial e está somente leitura. Reabra o mês para editar.';
     return;
   }
 
