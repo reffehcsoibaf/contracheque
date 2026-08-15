@@ -408,6 +408,21 @@
         </div>
         <p class="vazio" id="calcObservacao" style="margin-top:10px;"></p>
       </div>
+
+      <div class="cartao">
+        <h2>Adicional de insalubridade</h2>
+        <p class="subtexto">Calculado sobre o salário mínimo vigente, não sobre o salário-base — conforme a legislação.</p>
+        <div class="grade-resumo">
+          <div class="item">
+            <div class="rotulo">Salário mínimo vigente</div>
+            <div class="valor" id="calcSalarioMinimo">—</div>
+          </div>
+          <div class="item">
+            <div class="rotulo">Insalubridade (<span id="calcPercentualInsalubridade">—</span>)</div>
+            <div class="valor" id="calcInsalubridade">—</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ---------- LANÇAMENTOS DO MÊS ---------- -->
@@ -1033,6 +1048,22 @@ async function atualizarCalculoAutomatico(lancamentosDoMes){
   elObs.textContent = irrfFinal === 0 && baseBruta <= tetoIsencao
     ? 'IRRF zerado pela redução mensal (Lei 15.270/2025), pois a base bruta está até R$ 5.000,00.'
     : 'Cálculo estimado pela fórmula simplificada, com a redução mensal aplicável já descontada quando o caso.';
+
+  // Insalubridade — incide sobre o salário mínimo vigente, não sobre o salário-base
+  const salarioMinimo = valorParametro('salario_minimo', 0);
+  const percentualInsalubridade = valorParametro('insalubridade', 0);
+  const elSalarioMinimo = document.getElementById('calcSalarioMinimo');
+  const elPercentualInsalubridade = document.getElementById('calcPercentualInsalubridade');
+  const elInsalubridade = document.getElementById('calcInsalubridade');
+  if(salarioMinimo > 0){
+    elSalarioMinimo.textContent = formatarMoeda(salarioMinimo);
+    elPercentualInsalubridade.textContent = percentualInsalubridade + '%';
+    elInsalubridade.textContent = formatarMoeda(salarioMinimo * (percentualInsalubridade / 100));
+  } else {
+    elSalarioMinimo.textContent = '—';
+    elPercentualInsalubridade.textContent = '—';
+    elInsalubridade.textContent = '—';
+  }
 }
 
 
