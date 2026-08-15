@@ -484,6 +484,22 @@
         </div>
         <p class="vazio" id="vazioLancamentos">Nenhum lançamento neste mês.</p>
       </div>
+
+      <div class="cartao">
+        <h2>Itens do contracheque oficial (este mês)</h2>
+        <p class="subtexto">Linhas já confirmadas a partir de documentos oficiais enviados para o mesmo mês, para você comparar com o que lançou manualmente.</p>
+        <div class="tabela-scroll">
+          <table id="tabelaItensOficiaisMes">
+            <thead>
+              <tr>
+                <th>Arquivo</th><th>Rubrica</th><th>Descrição</th><th>Tipo</th><th class="numero">Qtd.</th><th class="numero">Valor</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="vazio" id="vazioItensOficiaisMes">Nenhum documento oficial confirmado para este mês ainda.</p>
+      </div>
     </div>
 
     <!-- ---------- CONTRACHEQUE OFICIAL ---------- -->
@@ -1152,6 +1168,64 @@ async function carregarLancamentos(){
 
   atualizarResumoMes(data || [], mesInput);
   await atualizarCalculoAutomatico(data || []);
+  await carregarItensOficiaisDoMes(mesData);
+}
+
+async function carregarItensOficiaisDoMes(mesData){
+  const corpo = document.querySelector('#tabelaItensOficiaisMes tbody');
+  const vazio = document.getElementById('vazioItensOficiaisMes');
+
+  const { data: docs, error: erroDocs } = await sb
+    .from('contracheque_documentos_oficiais')
+    .select('id, nome_arquivo')
+    .eq('mes_referencia', mesData);
+
+  if(erroDocs){
+    corpo.innerHTML = '';
+    vazio.textContent = 'Erro ao carregar: ' + erroDocs.message;
+    vazio.style.display = 'block';
+    return;
+  }
+
+  if(!docs || docs.length === 0){
+    corpo.innerHTML = '';
+    vazio.textContent = 'Nenhum documento oficial confirmado para este mês ainda.';
+    vazio.style.display = 'block';
+    return;
+  }
+
+  const nomesPorDocId = Object.fromEntries(docs.map(d => [d.id, d.nome_arquivo]));
+  const { data: itens, error: erroItens } = await sb
+    .from('contracheque_itens_oficiais')
+    .select('*')
+    .in('documento_id', docs.map(d => d.id))
+    .order('created_at', { ascending: true });
+
+  if(erroItens){
+    corpo.innerHTML = '';
+    vazio.textContent = 'Erro ao carregar: ' + erroItens.message;
+    vazio.style.display = 'block';
+    return;
+  }
+
+  if(!itens || itens.length === 0){
+    corpo.innerHTML = '';
+    vazio.textContent = 'Documento oficial enviado, mas ainda sem itens confirmados.';
+    vazio.style.display = 'block';
+    return;
+  }
+
+  vazio.style.display = 'none';
+  corpo.innerHTML = itens.map(it => `
+    <tr>
+      <td>${nomesPorDocId[it.documento_id] || '—'}</td>
+      <td>${it.rubrica_codigo || '—'}</td>
+      <td>${it.descricao}</td>
+      <td><span class="badge badge-${it.tipo}">${it.tipo === 'provento' ? 'Provento' : 'Desconto'}</span></td>
+      <td class="numero">${it.quantidade != null ? it.quantidade : ''}</td>
+      <td class="numero">${formatarMoeda(it.valor)}</td>
+    </tr>
+  `).join('');
 }
 
 function atualizarResumoMes(lancamentos, mesInput){
