@@ -384,6 +384,30 @@
           </div>
         </div>
       </div>
+
+      <div class="cartao">
+        <h2>INSS e IRRF calculados automaticamente</h2>
+        <p class="subtexto">Com base no salário-base atual, nas tabelas oficiais vigentes e nos proventos lançados no mês. Estimativa — não substitui o contracheque oficial.</p>
+        <div class="grade-resumo">
+          <div class="item">
+            <div class="rotulo">Base de cálculo (bruto tributável)</div>
+            <div class="valor" id="calcBaseBruta">—</div>
+          </div>
+          <div class="item">
+            <div class="rotulo">INSS (faixa <span id="calcFaixaInss">—</span>)</div>
+            <div class="valor" id="calcInss">—</div>
+          </div>
+          <div class="item">
+            <div class="rotulo">Base do IRRF</div>
+            <div class="valor" id="calcBaseIrrf">—</div>
+          </div>
+          <div class="item">
+            <div class="rotulo">IRRF (faixa <span id="calcFaixaIrrf">—</span>)</div>
+            <div class="valor" id="calcIrrf">—</div>
+          </div>
+        </div>
+        <p class="vazio" id="calcObservacao" style="margin-top:10px;"></p>
+      </div>
     </div>
 
     <!-- ---------- LANÇAMENTOS DO MÊS ---------- -->
@@ -617,6 +641,9 @@ const BUCKET_DOCUMENTOS = 'contracheque-documentos';
 
 let usuarioAtual = null;
 let cacheRubricas = [];
+let cacheParametros = [];
+let cacheTabelasOficiais = [];
+let cacheSalarioAtual = null;
 
 /* ---------- Utilitários ---------- */
 function formatarMoeda(valor){
@@ -705,7 +732,8 @@ async function carregarTudo(){
     carregarSalarioBase(),
     carregarParametros(),
     carregarRubricas(),
-    carregarOficiais()
+    carregarOficiais(),
+    carregarTabelasOficiais()
   ]);
   await carregarLancamentos();
 }
@@ -729,6 +757,7 @@ async function carregarSalarioBase(){
   }
 
   const atual = data[0];
+  cacheSalarioAtual = atual;
   document.getElementById('valorSalarioBaseResumo').textContent = formatarMoeda(atual.valor);
   document.getElementById('vigenciaSalarioBaseResumo').textContent = 'Vigente desde ' + new Date(atual.vigencia_inicio + 'T00:00:00').toLocaleDateString('pt-BR');
 
@@ -782,8 +811,10 @@ async function carregarParametros(){
   }
   if(!data || data.length === 0){
     corpo.innerHTML = '<tr><td colspan="4" class="vazio">Nenhum parâmetro cadastrado.</td></tr>';
+    cacheParametros = [];
     return;
   }
+  cacheParametros = data;
   corpo.innerHTML = data.map(row => `
     <tr>
       <td>${row.chave}</td>
@@ -895,7 +926,116 @@ document.querySelector('#tabelaRubricas tbody').addEventListener('click', async 
   await carregarRubricas();
 });
 
-/* ---------- Lançamentos do mês ---------- */
+/* ---------- Tabelas oficiais (INSS/IRRF) ---------- */
+async function carregarTabelasOficiais(){
+  const { data, error } = await sb
+    .from('contracheque_tabelas_oficiais')
+    .select('*')
+    .order('vigencia_inicio', { ascending: false })
+    .order('faixa_ordem', { ascending: true });
+
+  if(error){ cacheTabelasOficiais = []; return; }
+  cacheTabelasOficiais = data || [];
+}
+
+function tabelaVigente(tipo, dataReferencia){
+  const candidatas = cacheTabelasOficiais.filter(t => t.tipo === tipo && t.vigencia_inicio <= dataReferencia);
+  if(candidatas.length === 0) return [];
+  const vigenciaMaisRecente = candidatas.reduce((max, t) => t.vigencia_inicio > max ? t.vigencia_inicio : max, candidatas[0].vigencia_inicio);
+  return candidatas
+    .filter(t => t.vigencia_inicio === vigenciaMaisRecente)
+    .sort((a, b) => a.faixa_ordem - b.faixa_ordem);
+}
+
+function calcularProgressivo(base, faixas){
+  // Fórmula simplificada: (base × alíquota da faixa) − parcela a deduzir
+  if(faixas.length === 0) return { valor: 0, faixaOrdem: null, aliquota: null };
+  let faixaEncontrada = faixas.find(f => base >= f.valor_de && (f.valor_ate == null || base <= f.valor_ate));
+  if(!faixaEncontrada) faixaEncontrada = faixas[faixas.length - 1];
+  const bruto = (base * (faixaEncontrada.aliquota / 100)) - Number(faixaEncontrada.parcela_deduzir || 0);
+  return {
+    valor: Math.max(0, bruto),
+    faixaOrdem: faixaEncontrada.faixa_ordem,
+    aliquota: faixaEncontrada.aliquota
+  };
+}
+
+function valorParametro(chave, padrao = 0){
+  const p = cacheParametros.find(x => x.chave === chave);
+  return p ? Number(p.valor) : padrao;
+}
+
+async function atualizarCalculoAutomatico(lancamentosDoMes){
+  const elBase = document.getElementById('calcBaseBruta');
+  const elInss = document.getElementById('calcInss');
+  const elFaixaInss = document.getElementById('calcFaixaInss');
+  const elBaseIrrf = document.getElementById('calcBaseIrrf');
+  const elIrrf = document.getElementById('calcIrrf');
+  const elFaixaIrrf = document.getElementById('calcFaixaIrrf');
+  const elObs = document.getElementById('calcObservacao');
+
+  if(!cacheSalarioAtual){
+    elBase.textContent = '—'; elInss.textContent = '—'; elIrrf.textContent = '—'; elBaseIrrf.textContent = '—';
+    elObs.textContent = 'Cadastre o salário-base em Configurações para ver o cálculo automático.';
+    return;
+  }
+
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  // Base bruta tributável: salário-base + proventos lançados no mês (exceto rubricas de desconto)
+  let proventosLancados = 0;
+  (lancamentosDoMes || []).forEach(l => {
+    if(l.valor_calculado == null) return;
+    const rub = cacheRubricas.find(r => r.codigo === l.rubrica_codigo);
+    if(!rub || rub.tipo === 'provento') proventosLancados += Number(l.valor_calculado);
+  });
+  const baseBruta = Number(cacheSalarioAtual.valor) + proventosLancados;
+
+  const faixasInss = tabelaVigente('INSS', hoje);
+  const faixasIrrf = tabelaVigente('IRRF', hoje);
+
+  if(faixasInss.length === 0 || faixasIrrf.length === 0){
+    elBase.textContent = formatarMoeda(baseBruta);
+    elInss.textContent = '—'; elIrrf.textContent = '—'; elBaseIrrf.textContent = '—';
+    elObs.textContent = 'Tabelas de INSS/IRRF ainda não cadastradas para a competência atual.';
+    return;
+  }
+
+  const resultadoInss = calcularProgressivo(baseBruta, faixasInss);
+
+  const dependentes = 0; // ajustável futuramente via cadastro de dependentes
+  const deducaoDependente = valorParametro('irrf_dependente_deducao', 0) * dependentes;
+  const descontoSimplificado = valorParametro('irrf_desconto_simplificado', 0);
+  const baseComDeducoesLegais = baseBruta - resultadoInss.valor - deducaoDependente;
+  const baseComSimplificado = baseBruta - descontoSimplificado;
+  // Usa o critério mais vantajoso ao contribuinte (menor base), como determina a Receita Federal
+  const baseIrrf = Math.max(0, Math.min(baseComDeducoesLegais, baseComSimplificado));
+
+  const resultadoIrrfBruto = calcularProgressivo(baseIrrf, faixasIrrf);
+
+  // Redução mensal (Lei 15.270/2025), calculada sobre a remuneração bruta tributável
+  const tetoIsencao = valorParametro('irrf_teto_isencao_lei15270', 5000);
+  const tetoReducao = valorParametro('irrf_teto_reducao_lei15270', 7350);
+  let reducao = 0;
+  if(baseBruta <= tetoIsencao){
+    reducao = resultadoIrrfBruto.valor; // zera o imposto
+  } else if(baseBruta <= tetoReducao){
+    reducao = Math.max(0, 978.62 - (0.133145 * baseBruta));
+  }
+  const irrfFinal = Math.max(0, resultadoIrrfBruto.valor - reducao);
+
+  elBase.textContent = formatarMoeda(baseBruta);
+  elInss.textContent = formatarMoeda(resultadoInss.valor);
+  elFaixaInss.textContent = resultadoInss.faixaOrdem ? (resultadoInss.faixaOrdem + 'ª — ' + resultadoInss.aliquota + '%') : '—';
+  elBaseIrrf.textContent = formatarMoeda(baseIrrf);
+  elIrrf.textContent = formatarMoeda(irrfFinal);
+  elFaixaIrrf.textContent = resultadoIrrfBruto.aliquota != null ? (resultadoIrrfBruto.aliquota + '%') : '—';
+  elObs.textContent = irrfFinal === 0 && baseBruta <= tetoIsencao
+    ? 'IRRF zerado pela redução mensal (Lei 15.270/2025), pois a base bruta está até R$ 5.000,00.'
+    : 'Cálculo estimado pela fórmula simplificada, com a redução mensal aplicável já descontada quando o caso.';
+}
+
+
 async function carregarLancamentos(){
   const mesInput = document.getElementById('filtroMesLancamentos').value || mesAtualInput();
   const mesData = mesParaData(mesInput);
@@ -934,6 +1074,7 @@ async function carregarLancamentos(){
   }
 
   atualizarResumoMes(data || [], mesInput);
+  await atualizarCalculoAutomatico(data || []);
 }
 
 function atualizarResumoMes(lancamentos, mesInput){
