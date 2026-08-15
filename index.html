@@ -557,6 +557,29 @@
               </select>
             </div>
           </div>
+          <div class="campo" style="margin-top:12px;max-width:320px;">
+            <label for="rubCategoria">Categoria genérica</label>
+            <select id="rubCategoria" required>
+              <option value="salario_base">Salário-base</option>
+              <option value="inss">INSS</option>
+              <option value="irrf">IRRF</option>
+              <option value="decimo_terceiro">13º salário</option>
+              <option value="ferias">Férias</option>
+              <option value="adiantamento">Adiantamento</option>
+              <option value="adicional_insalubridade">Adicional de insalubridade</option>
+              <option value="adicional_tempo_servico">Adicional por tempo de serviço</option>
+              <option value="atestado_afastamento">Atestado / afastamento</option>
+              <option value="bonificacao">Bonificação / PPR</option>
+              <option value="reembolso">Reembolso</option>
+              <option value="plano_saude">Plano de saúde</option>
+              <option value="vale_refeicao_alimentacao">Vale-refeição / alimentação</option>
+              <option value="mensalidade_associativa">Mensalidade sindical / associativa</option>
+              <option value="emprestimo_consignado">Empréstimo consignado</option>
+              <option value="falta_atraso">Falta / atraso</option>
+              <option value="outros_proventos">Outros proventos</option>
+              <option value="outros_descontos">Outros descontos</option>
+            </select>
+          </div>
           <button type="submit" class="btn-primario" id="btnSalvarRubrica" style="margin-top:12px;">Adicionar rubrica</button>
         </form>
         <p class="status-msg" id="statusRubrica" role="status" aria-live="polite"></p>
@@ -567,7 +590,7 @@
         <div class="tabela-scroll">
           <table id="tabelaRubricas">
             <thead>
-              <tr><th>Código</th><th>Descrição</th><th>Tipo</th><th>Origem</th><th></th></tr>
+              <tr><th>Código</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Origem</th><th></th></tr>
             </thead>
             <tbody></tbody>
           </table>
@@ -870,6 +893,27 @@ document.getElementById('formParametro').addEventListener('submit', async (ev) =
 });
 
 /* ---------- Rubricas ---------- */
+const ROTULOS_CATEGORIA = {
+  salario_base: 'Salário-base',
+  inss: 'INSS',
+  irrf: 'IRRF',
+  decimo_terceiro: '13º salário',
+  ferias: 'Férias',
+  adiantamento: 'Adiantamento',
+  adicional_insalubridade: 'Adicional de insalubridade',
+  adicional_tempo_servico: 'Adicional por tempo de serviço',
+  atestado_afastamento: 'Atestado / afastamento',
+  bonificacao: 'Bonificação / PPR',
+  reembolso: 'Reembolso',
+  plano_saude: 'Plano de saúde',
+  vale_refeicao_alimentacao: 'Vale-refeição / alimentação',
+  mensalidade_associativa: 'Mensalidade sindical / associativa',
+  emprestimo_consignado: 'Empréstimo consignado',
+  falta_atraso: 'Falta / atraso',
+  outros_proventos: 'Outros proventos',
+  outros_descontos: 'Outros descontos'
+};
+
 async function carregarRubricas(){
   const { data, error } = await sb
     .from('contracheque_rubricas_catalogo')
@@ -880,7 +924,7 @@ async function carregarRubricas(){
   const seletor = document.getElementById('lancRubrica');
 
   if(error){
-    corpo.innerHTML = '<tr><td colspan="5" class="vazio">Erro ao carregar: ' + error.message + '</td></tr>';
+    corpo.innerHTML = '<tr><td colspan="6" class="vazio">Erro ao carregar: ' + error.message + '</td></tr>';
     return;
   }
 
@@ -890,7 +934,7 @@ async function carregarRubricas(){
     cacheRubricas.map(r => `<option value="${r.codigo}">${r.codigo} — ${r.descricao}</option>`).join('');
 
   if(cacheRubricas.length === 0){
-    corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhuma rubrica cadastrada.</td></tr>';
+    corpo.innerHTML = '<tr><td colspan="6" class="vazio">Nenhuma rubrica cadastrada.</td></tr>';
     return;
   }
 
@@ -899,6 +943,7 @@ async function carregarRubricas(){
       <td>${r.codigo}</td>
       <td>${r.descricao}</td>
       <td><span class="badge badge-${r.tipo}">${r.tipo === 'provento' ? 'Provento' : 'Desconto'}</span></td>
+      <td>${ROTULOS_CATEGORIA[r.categoria] || r.categoria}</td>
       <td>${r.origem === 'ia' ? 'IA' : 'Manual'}</td>
       <td><button type="button" class="btn-perigo" data-id="${r.id}" data-acao="excluir-rubrica">Excluir</button></td>
     </tr>
@@ -910,6 +955,7 @@ document.getElementById('formRubrica').addEventListener('submit', async (ev) => 
   const codigo = document.getElementById('rubCodigo').value.trim();
   const descricao = document.getElementById('rubDescricao').value.trim();
   const tipo = document.getElementById('rubTipo').value;
+  const categoria = document.getElementById('rubCategoria').value;
   const status = document.getElementById('statusRubrica');
   const btn = document.getElementById('btnSalvarRubrica');
 
@@ -920,7 +966,7 @@ document.getElementById('formRubrica').addEventListener('submit', async (ev) => 
 
   btn.disabled = true; btn.textContent = 'Salvando…';
   const { error } = await sb.from('contracheque_rubricas_catalogo').insert({
-    codigo, descricao, tipo, origem: 'manual'
+    codigo, descricao, tipo, categoria, origem: 'manual'
   });
   btn.disabled = false; btn.textContent = 'Adicionar rubrica';
 
