@@ -353,6 +353,7 @@
       <button type="button" role="tab" id="tabResumo" aria-controls="painelResumo" aria-selected="true">Resumo</button>
       <button type="button" role="tab" id="tabLancamentos" aria-controls="painelLancamentos" aria-selected="false">Lançamentos do mês</button>
       <button type="button" role="tab" id="tabOficial" aria-controls="painelOficial" aria-selected="false">Contracheque oficial</button>
+      <button type="button" role="tab" id="tabOriginais" aria-controls="painelOriginais" aria-selected="false">Contracheques originais</button>
       <button type="button" role="tab" id="tabRubricas" aria-controls="painelRubricas" aria-selected="false">Rubricas</button>
       <button type="button" role="tab" id="tabConfig" aria-controls="painelConfig" aria-selected="false">Configurações</button>
     </nav>
@@ -602,6 +603,24 @@
       </div>
     </div>
 
+    <!-- ---------- CONTRACHEQUES ORIGINAIS ---------- -->
+    <div class="painel-aba" id="painelOriginais" role="tabpanel" aria-labelledby="tabOriginais">
+      <div class="cartao">
+        <h2>Contracheques originais</h2>
+        <p class="subtexto">Os PDFs enviados na aba "Contracheque oficial" ficam guardados aqui. Abra ou baixe o arquivo original a qualquer momento.</p>
+        <div class="tabela-scroll">
+          <table id="tabelaOriginais">
+            <thead>
+              <tr><th>Mês</th><th>Arquivo</th><th>Enviado em</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="vazio" id="vazioOriginais">Nenhum contracheque original enviado ainda.</p>
+        <p class="status-msg" id="statusOriginais" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+
     <!-- ---------- RUBRICAS ---------- -->
     <div class="painel-aba" id="painelRubricas" role="tabpanel" aria-labelledby="tabRubricas">
       <div class="cartao">
@@ -819,7 +838,7 @@ document.getElementById('btnSair').addEventListener('click', async () => {
 });
 
 /* ---------- Abas ---------- */
-const abas = ['Resumo','Lancamentos','Oficial','Rubricas','Config'];
+const abas = ['Resumo','Lancamentos','Oficial','Originais','Rubricas','Config'];
 abas.forEach(nome => {
   document.getElementById('tab' + nome).addEventListener('click', () => {
     abas.forEach(outra => {
@@ -839,6 +858,7 @@ async function carregarTudo(){
     carregarParametros(),
     carregarRubricas(),
     carregarOficiais(),
+    carregarOriginais(),
     carregarTabelasOficiais()
   ]);
   await carregarLancamentos();
@@ -1459,6 +1479,62 @@ async function carregarOficiais(){
   `).join('');
 }
 
+async function carregarOriginais(){
+  const { data, error } = await sb
+    .from('contracheque_documentos_oficiais')
+    .select('*')
+    .order('mes_referencia', { ascending: false });
+
+  const corpo = document.querySelector('#tabelaOriginais tbody');
+  const vazio = document.getElementById('vazioOriginais');
+
+  if(error){
+    corpo.innerHTML = '';
+    vazio.textContent = 'Erro ao carregar: ' + error.message;
+    vazio.style.display = 'block';
+    return;
+  }
+
+  if(!data || data.length === 0){
+    corpo.innerHTML = '';
+    vazio.style.display = 'block';
+    return;
+  }
+
+  vazio.style.display = 'none';
+  const statusLabel = { pendente: 'Pendente', extraido: 'Extraído', confirmado: 'Confirmado', erro: 'Erro' };
+  corpo.innerHTML = data.map(d => `
+    <tr>
+      <td>${dataParaMesLabel(d.mes_referencia)}</td>
+      <td>${d.nome_arquivo}</td>
+      <td>${d.criado_em ? new Date(d.criado_em).toLocaleDateString('pt-BR') : '—'}</td>
+      <td>${statusLabel[d.status_extracao] || d.status_extracao}</td>
+      <td>
+        <button type="button" class="btn-secundario" data-caminho="${d.storage_path}" data-acao="abrir-original">Abrir</button>
+        <button type="button" class="btn-secundario" data-caminho="${d.storage_path}" data-nome="${d.nome_arquivo}" data-acao="baixar-original">Baixar</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.querySelector('#tabelaOriginais tbody').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-acao="abrir-original"], button[data-acao="baixar-original"]');
+  if(!btn) return;
+  const status = document.getElementById('statusOriginais');
+  status.dataset.tipo = ''; status.textContent = 'Gerando link de acesso…';
+
+  const { data, error } = await sb.storage.from(BUCKET_DOCUMENTOS).createSignedUrl(btn.dataset.caminho, 300, btn.dataset.acao === 'baixar-original' ? { download: btn.dataset.nome } : undefined);
+
+  if(error || !data?.signedUrl){
+    status.dataset.tipo = 'erro';
+    status.textContent = 'Erro ao gerar link do arquivo: ' + (error?.message || 'desconhecido');
+    return;
+  }
+
+  status.textContent = '';
+  window.open(data.signedUrl, '_blank');
+});
+
 document.getElementById('formUploadOficial').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const mes = document.getElementById('oficialMes').value;
@@ -1535,6 +1611,7 @@ document.getElementById('formUploadOficial').addEventListener('submit', async (e
   document.getElementById('formUploadOficial').reset();
   document.getElementById('oficialMes').value = mes;
   await carregarOficiais();
+  await carregarOriginais();
 });
 
 async function arquivoParaBase64(arquivo){
@@ -1688,6 +1765,7 @@ document.getElementById('btnConfirmarRevisaoIA').addEventListener('click', async
   document.getElementById('cartaoRevisaoIA').style.display = 'none';
   documentoRevisaoAtual = null;
   await carregarOficiais();
+  await carregarOriginais();
   await carregarRubricas();
 });
 
@@ -1697,6 +1775,7 @@ document.querySelector('#tabelaOficiais tbody').addEventListener('click', async 
   if(!confirm('Excluir este documento e suas divergências associadas?')) return;
   await sb.from('contracheque_documentos_oficiais').delete().eq('id', btn.dataset.id);
   await carregarOficiais();
+  await carregarOriginais();
 });
 
 
