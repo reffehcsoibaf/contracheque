@@ -530,9 +530,54 @@
         <p class="status-msg" id="statusOficial" role="status" aria-live="polite"></p>
       </div>
 
+      <div class="cartao" id="cartaoRevisaoIA" style="display:none;">
+        <h2>Revisar itens extraídos pela IA</h2>
+        <p class="subtexto" id="revisaoProvedorTexto"></p>
+        <div class="linha-form">
+          <div class="campo">
+            <label for="revisaoMes">Mês de referência</label>
+            <input type="month" id="revisaoMes">
+          </div>
+          <div class="campo">
+            <label for="revisaoDataPagamento">Data de pagamento</label>
+            <input type="date" id="revisaoDataPagamento">
+          </div>
+        </div>
+        <div class="tabela-scroll" style="margin-top:16px;">
+          <table id="tabelaRevisaoIA">
+            <thead>
+              <tr><th>Código</th><th>Descrição</th><th>Tipo</th><th class="numero">Qtd.</th><th class="numero">Valor</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn-secundario" id="btnAdicionarItemRevisao" style="margin-top:10px;">+ Adicionar item</button>
+
+        <div class="grade-resumo" style="margin-top:16px;">
+          <div class="item">
+            <div class="rotulo">Total proventos</div>
+            <input type="number" id="revisaoTotalProventos" step="0.01" style="width:100%;background:transparent;border:none;color:var(--paper);font-family:'Fraunces',serif;font-size:20px;font-weight:700;padding:0;">
+          </div>
+          <div class="item">
+            <div class="rotulo">Total descontos</div>
+            <input type="number" id="revisaoTotalDescontos" step="0.01" style="width:100%;background:transparent;border:none;color:var(--paper);font-family:'Fraunces',serif;font-size:20px;font-weight:700;padding:0;">
+          </div>
+          <div class="item">
+            <div class="rotulo">Pagamento líquido</div>
+            <input type="number" id="revisaoPagamentoLiquido" step="0.01" style="width:100%;background:transparent;border:none;color:var(--paper);font-family:'Fraunces',serif;font-size:20px;font-weight:700;padding:0;">
+          </div>
+        </div>
+
+        <div style="margin-top:16px;display:flex;gap:10px;">
+          <button type="button" class="btn-primario" id="btnConfirmarRevisaoIA">Confirmar e salvar itens</button>
+          <button type="button" class="btn-perigo" id="btnCancelarRevisaoIA">Cancelar</button>
+        </div>
+        <p class="status-msg" id="statusRevisaoIA" role="status" aria-live="polite"></p>
+      </div>
+
       <div class="cartao">
         <h2>Documentos enviados</h2>
-        <p class="subtexto">A extração automática por IA será conectada em uma próxima etapa (endpoint no Worker). Por enquanto, registre as linhas manualmente após o upload.</p>
+        <p class="subtexto">Depois de confirmados, os itens ficam visíveis também na aba Lançamentos do mês.</p>
         <div class="tabela-scroll">
           <table id="tabelaOficiais">
             <thead>
@@ -1442,25 +1487,208 @@ document.getElementById('formUploadOficial').addEventListener('submit', async (e
     return;
   }
 
-  const { error: erroInsert } = await sb.from('contracheque_documentos_oficiais').insert({
+  const { data: docInserido, error: erroInsert } = await sb.from('contracheque_documentos_oficiais').insert({
     mes_referencia: mesParaData(mes),
     nome_arquivo: arquivo.name,
     storage_path: caminho,
     status_extracao: 'pendente'
-  });
-
-  btn.disabled = false; btn.textContent = 'Enviar documento';
+  }).select().single();
 
   if(erroInsert){
+    btn.disabled = false; btn.textContent = 'Enviar documento';
     status.dataset.tipo = 'erro'; status.textContent = 'Erro ao registrar documento: ' + erroInsert.message;
     return;
   }
 
-  status.dataset.tipo = 'ok';
-  status.textContent = 'Documento enviado. A extração automática por IA ainda será conectada — por ora, os itens podem ser conferidos manualmente.';
+  documentoRevisaoAtual = docInserido;
+  status.dataset.tipo = ''; status.textContent = 'Documento enviado. Lendo com IA…';
+  btn.textContent = 'Lendo com IA…';
+
+  try{
+    const arquivoBase64 = await arquivoParaBase64(arquivo);
+    const { data: sessao } = await sb.auth.getSession();
+    const resposta = await fetch('/api/ler-contracheque', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + sessao.session.access_token
+      },
+      body: JSON.stringify({ arquivoBase64 })
+    });
+    const resultado = await resposta.json();
+
+    if(!resposta.ok){
+      throw new Error(resultado.error || 'Erro desconhecido ao ler o PDF.');
+    }
+
+    await sb.from('contracheque_documentos_oficiais').update({ status_extracao: 'extraido' }).eq('id', docInserido.id);
+
+    status.dataset.tipo = 'ok';
+    status.textContent = 'Documento lido com sucesso. Revise os itens abaixo antes de confirmar.';
+    abrirRevisaoIA(resultado, mes);
+  } catch(erroIA){
+    status.dataset.tipo = 'erro';
+    status.textContent = 'O documento foi enviado, mas a leitura por IA falhou: ' + erroIA.message + '. Você pode tentar novamente ou excluir o documento na lista abaixo.';
+  }
+
+  btn.disabled = false; btn.textContent = 'Enviar documento';
   document.getElementById('formUploadOficial').reset();
   document.getElementById('oficialMes').value = mes;
   await carregarOficiais();
+});
+
+async function arquivoParaBase64(arquivo){
+  const buffer = await arquivo.arrayBuffer();
+  let binario = '';
+  const bytes = new Uint8Array(buffer);
+  const tamanhoBloco = 0x8000;
+  for(let i = 0; i < bytes.length; i += tamanhoBloco){
+    binario += String.fromCharCode.apply(null, bytes.subarray(i, i + tamanhoBloco));
+  }
+  return btoa(binario);
+}
+
+/* ---------- Revisão dos itens extraídos pela IA ---------- */
+let documentoRevisaoAtual = null;
+let contadorLinhaRevisao = 0;
+
+function abrirRevisaoIA(resultado, mesInput){
+  const cartao = document.getElementById('cartaoRevisaoIA');
+  const corpo = document.querySelector('#tabelaRevisaoIA tbody');
+  const provedorTexto = document.getElementById('revisaoProvedorTexto');
+
+  provedorTexto.textContent = 'Lido automaticamente (' + (resultado._provedor === 'gemini' ? 'Gemini' : 'Anthropic') + '). Confira cada linha antes de salvar — a IA pode errar.';
+  document.getElementById('revisaoMes').value = resultado.mesReferencia || mesInput;
+  document.getElementById('revisaoDataPagamento').value = resultado.dataPagamento || '';
+  document.getElementById('revisaoTotalProventos').value = resultado.totalProventos ?? '';
+  document.getElementById('revisaoTotalDescontos').value = resultado.totalDescontos ?? '';
+  document.getElementById('revisaoPagamentoLiquido').value = resultado.pagamentoLiquido ?? '';
+
+  corpo.innerHTML = '';
+  contadorLinhaRevisao = 0;
+  (resultado.itens || []).forEach(item => adicionarLinhaRevisao(item));
+
+  cartao.style.display = 'block';
+  cartao.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function adicionarLinhaRevisao(item){
+  const corpo = document.querySelector('#tabelaRevisaoIA tbody');
+  const id = 'revlinha' + (contadorLinhaRevisao++);
+  const codigoConhecido = item && item.codigo && cacheRubricas.some(r => r.codigo === item.codigo);
+  const tr = document.createElement('tr');
+  tr.id = id;
+  tr.innerHTML = `
+    <td><input type="text" class="rev-codigo" value="${item?.codigo ?? ''}" style="width:80px;background:var(--ink);border:1px solid var(--ink-3);border-radius:6px;color:var(--paper);padding:6px;">
+      ${item?.codigo && !codigoConhecido ? '<div class="vazio" style="margin-top:4px;">novo código</div>' : ''}</td>
+    <td><input type="text" class="rev-descricao" value="${(item?.descricao ?? '').replace(/"/g,'&quot;')}" style="width:100%;min-width:160px;background:var(--ink);border:1px solid var(--ink-3);border-radius:6px;color:var(--paper);padding:6px;"></td>
+    <td>
+      <select class="rev-tipo" style="background:var(--ink);border:1px solid var(--ink-3);border-radius:6px;color:var(--paper);padding:6px;">
+        <option value="provento" ${item?.tipo === 'provento' ? 'selected' : ''}>Provento</option>
+        <option value="desconto" ${item?.tipo === 'desconto' ? 'selected' : ''}>Desconto</option>
+      </select>
+    </td>
+    <td><input type="number" step="0.01" class="rev-quantidade numero" value="${item?.quantidade ?? ''}" style="width:80px;background:var(--ink);border:1px solid var(--ink-3);border-radius:6px;color:var(--paper);padding:6px;"></td>
+    <td><input type="number" step="0.01" class="rev-valor numero" value="${item?.valor ?? ''}" style="width:100px;background:var(--ink);border:1px solid var(--ink-3);border-radius:6px;color:var(--paper);padding:6px;"></td>
+    <td><button type="button" class="btn-perigo" data-acao="remover-linha-revisao">×</button></td>
+  `;
+  corpo.appendChild(tr);
+}
+
+document.getElementById('btnAdicionarItemRevisao').addEventListener('click', () => {
+  adicionarLinhaRevisao({ codigo: '', descricao: '', tipo: 'provento', quantidade: null, valor: null });
+});
+
+document.querySelector('#tabelaRevisaoIA tbody').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('button[data-acao="remover-linha-revisao"]');
+  if(!btn) return;
+  btn.closest('tr').remove();
+});
+
+document.getElementById('btnCancelarRevisaoIA').addEventListener('click', () => {
+  document.getElementById('cartaoRevisaoIA').style.display = 'none';
+  documentoRevisaoAtual = null;
+});
+
+document.getElementById('btnConfirmarRevisaoIA').addEventListener('click', async () => {
+  const status = document.getElementById('statusRevisaoIA');
+  const btn = document.getElementById('btnConfirmarRevisaoIA');
+  if(!documentoRevisaoAtual){
+    status.dataset.tipo = 'erro'; status.textContent = 'Nenhum documento em revisão.';
+    return;
+  }
+
+  const linhas = Array.from(document.querySelectorAll('#tabelaRevisaoIA tbody tr'));
+  if(linhas.length === 0){
+    status.dataset.tipo = 'erro'; status.textContent = 'Adicione ao menos um item antes de confirmar.';
+    return;
+  }
+
+  const itens = linhas.map(tr => {
+    const codigo = tr.querySelector('.rev-codigo').value.trim() || null;
+    const descricao = tr.querySelector('.rev-descricao').value.trim();
+    const tipo = tr.querySelector('.rev-tipo').value;
+    const qtdStr = tr.querySelector('.rev-quantidade').value;
+    const valStr = tr.querySelector('.rev-valor').value;
+    const rubricaConhecida = codigo && cacheRubricas.some(r => r.codigo === codigo);
+    return {
+      rubrica_codigo: codigo,
+      descricao,
+      tipo,
+      quantidade: qtdStr === '' ? null : parseFloat(qtdStr),
+      valor: valStr === '' ? 0 : parseFloat(valStr),
+      rubrica_desconhecida: !!codigo && !rubricaConhecida
+    };
+  });
+
+  if(itens.some(i => !i.descricao)){
+    status.dataset.tipo = 'erro'; status.textContent = 'Toda linha precisa de uma descrição.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  status.dataset.tipo = ''; status.textContent = '';
+
+  const totalProvInput = document.getElementById('revisaoTotalProventos').value;
+  const totalDescInput = document.getElementById('revisaoTotalDescontos').value;
+  const liquidoInput = document.getElementById('revisaoPagamentoLiquido').value;
+  const somaProv = itens.filter(i => i.tipo === 'provento').reduce((s, i) => s + i.valor, 0);
+  const somaDesc = itens.filter(i => i.tipo === 'desconto').reduce((s, i) => s + i.valor, 0);
+
+  const totalProventos = totalProvInput !== '' ? parseFloat(totalProvInput) : somaProv;
+  const totalDescontos = totalDescInput !== '' ? parseFloat(totalDescInput) : somaDesc;
+  const pagamentoLiquido = liquidoInput !== '' ? parseFloat(liquidoInput) : (totalProventos - totalDescontos);
+
+  const { error: erroItens } = await sb.from('contracheque_itens_oficiais').insert(
+    itens.map(i => ({ ...i, documento_id: documentoRevisaoAtual.id }))
+  );
+
+  if(erroItens){
+    btn.disabled = false; btn.textContent = 'Confirmar e salvar itens';
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro ao salvar itens: ' + erroItens.message;
+    return;
+  }
+
+  const mesRevisao = document.getElementById('revisaoMes').value;
+  const { error: erroUpdate } = await sb.from('contracheque_documentos_oficiais').update({
+    mes_referencia: mesRevisao ? mesParaData(mesRevisao) : documentoRevisaoAtual.mes_referencia,
+    total_proventos: totalProventos,
+    total_descontos: totalDescontos,
+    pagamento_liquido: pagamentoLiquido,
+    status_extracao: 'confirmado'
+  }).eq('id', documentoRevisaoAtual.id);
+
+  btn.disabled = false; btn.textContent = 'Confirmar e salvar itens';
+
+  if(erroUpdate){
+    status.dataset.tipo = 'erro'; status.textContent = 'Itens salvos, mas houve erro ao atualizar o documento: ' + erroUpdate.message;
+    return;
+  }
+
+  document.getElementById('cartaoRevisaoIA').style.display = 'none';
+  documentoRevisaoAtual = null;
+  await carregarOficiais();
+  await carregarRubricas();
 });
 
 document.querySelector('#tabelaOficiais tbody').addEventListener('click', async (ev) => {
@@ -1470,6 +1698,7 @@ document.querySelector('#tabelaOficiais tbody').addEventListener('click', async 
   await sb.from('contracheque_documentos_oficiais').delete().eq('id', btn.dataset.id);
   await carregarOficiais();
 });
+
 
 /* ==================== INICIALIZAÇÃO ==================== */
 (async function iniciar(){
