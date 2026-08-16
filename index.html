@@ -350,12 +350,12 @@
   <section id="telaApp" class="visually-hidden" aria-hidden="true">
 
     <nav class="abas" role="tablist" aria-label="Seções do Contracheque">
-      <button type="button" role="tab" id="tabResumo" aria-controls="painelResumo" aria-selected="true">Resumo</button>
-      <button type="button" role="tab" id="tabLancamentos" aria-controls="painelLancamentos" aria-selected="false">Lançamentos do mês</button>
-      <button type="button" role="tab" id="tabOficial" aria-controls="painelOficial" aria-selected="false">Contracheque oficial</button>
-      <button type="button" role="tab" id="tabOriginais" aria-controls="painelOriginais" aria-selected="false">Contracheques originais</button>
-      <button type="button" role="tab" id="tabRubricas" aria-controls="painelRubricas" aria-selected="false">Rubricas</button>
-      <button type="button" role="tab" id="tabConfig" aria-controls="painelConfig" aria-selected="false">Configurações</button>
+      <button type="button" role="tab" id="tabResumo" aria-controls="painelResumo" aria-selected="true" title="Alt+1">Resumo</button>
+      <button type="button" role="tab" id="tabLancamentos" aria-controls="painelLancamentos" aria-selected="false" title="Alt+2">Lançamentos do mês</button>
+      <button type="button" role="tab" id="tabOficial" aria-controls="painelOficial" aria-selected="false" title="Alt+3">Contracheque oficial</button>
+      <button type="button" role="tab" id="tabOriginais" aria-controls="painelOriginais" aria-selected="false" title="Alt+4">Contracheques originais</button>
+      <button type="button" role="tab" id="tabRubricas" aria-controls="painelRubricas" aria-selected="false" title="Alt+5">Rubricas</button>
+      <button type="button" role="tab" id="tabConfig" aria-controls="painelConfig" aria-selected="false" title="Alt+6">Configurações</button>
     </nav>
 
     <!-- ---------- RESUMO ---------- -->
@@ -839,16 +839,53 @@ document.getElementById('btnSair').addEventListener('click', async () => {
 
 /* ---------- Abas ---------- */
 const abas = ['Resumo','Lancamentos','Oficial','Originais','Rubricas','Config'];
-abas.forEach(nome => {
-  document.getElementById('tab' + nome).addEventListener('click', () => {
-    abas.forEach(outra => {
-      const btnOutra = document.getElementById('tab' + outra);
-      const painelOutra = document.getElementById('painel' + outra);
-      const ativa = outra === nome;
-      btnOutra.setAttribute('aria-selected', ativa ? 'true' : 'false');
-      painelOutra.classList.toggle('ativo', ativa);
-    });
+
+function ativarAba(nome){
+  abas.forEach(outra => {
+    const btnOutra = document.getElementById('tab' + outra);
+    const painelOutra = document.getElementById('painel' + outra);
+    const ativa = outra === nome;
+    btnOutra.setAttribute('aria-selected', ativa ? 'true' : 'false');
+    painelOutra.classList.toggle('ativo', ativa);
   });
+}
+
+abas.forEach(nome => {
+  document.getElementById('tab' + nome).addEventListener('click', () => ativarAba(nome));
+});
+
+/* ---------- Atalhos de teclado ---------- */
+document.addEventListener('keydown', (ev) => {
+  if(!ev.altKey || ev.ctrlKey || ev.metaKey) return;
+
+  // Alt + 1..6 -> trocar de aba
+  const indice = abas.findIndex((_, i) => ev.key === String(i + 1));
+  if(indice !== -1){
+    ev.preventDefault();
+    ativarAba(abas[indice]);
+    return;
+  }
+
+  // Alt + S -> salvar lançamento manual (aba Lançamentos)
+  if(ev.key.toLowerCase() === 's'){
+    const painel = document.getElementById('painelLancamentos');
+    const btnSalvar = document.getElementById('btnSalvarLancamento');
+    if(painel && painel.classList.contains('ativo') && btnSalvar && !btnSalvar.disabled){
+      ev.preventDefault();
+      document.getElementById('formLancamento').requestSubmit();
+    }
+    return;
+  }
+
+  // Alt + C -> confirmar lançamentos do mês (aba Lançamentos)
+  if(ev.key.toLowerCase() === 'c'){
+    const painel = document.getElementById('painelLancamentos');
+    const btnConfirmar = document.getElementById('btnConfirmarMes');
+    if(painel && painel.classList.contains('ativo') && btnConfirmar && btnConfirmar.style.display !== 'none'){
+      ev.preventDefault();
+      btnConfirmar.click();
+    }
+  }
 });
 
 /* ==================== CARREGAMENTO GERAL ==================== */
