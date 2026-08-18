@@ -356,6 +356,7 @@
       <button type="button" role="tab" id="tabOriginais" aria-controls="painelOriginais" aria-selected="false" title="Alt+4">Contracheques originais</button>
       <button type="button" role="tab" id="tabRubricas" aria-controls="painelRubricas" aria-selected="false" title="Alt+5">Rubricas</button>
       <button type="button" role="tab" id="tabConfig" aria-controls="painelConfig" aria-selected="false" title="Alt+6">Configurações</button>
+      <button type="button" role="tab" id="tabTabelas" aria-controls="painelTabelas" aria-selected="false" title="Alt+7">Tabelas INSS/IRRF</button>
     </nav>
 
     <!-- ---------- RESUMO ---------- -->
@@ -751,6 +752,118 @@
       </div>
     </div>
 
+    <!-- ---------- TABELAS OFICIAIS (INSS/IRRF) ---------- -->
+    <div class="painel-aba" id="painelTabelas" role="tabpanel" aria-labelledby="tabTabelas">
+      <div class="cartao">
+        <h2>Buscar tabela oficial atualizada</h2>
+        <p class="subtexto">Usa IA com busca na web para localizar a tabela de INSS ou IRRF vigente na competência informada, direto de fontes oficiais. Sempre revise os valores antes de confirmar — a IA pode errar.</p>
+        <form id="formBuscarTabela" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="btTipo">Tabela</label>
+              <select id="btTipo" required>
+                <option value="INSS">INSS</option>
+                <option value="IRRF">IRRF</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="btCompetencia">Vigente em (mês/ano de referência)</label>
+              <input type="month" id="btCompetencia" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primario" id="btnBuscarTabela" style="margin-top:12px;">Buscar com IA</button>
+        </form>
+        <p class="status-msg" id="statusBuscarTabela" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="cartao" id="cartaoRevisaoTabela" style="display:none;">
+        <h2>Revisar antes de salvar</h2>
+        <p class="subtexto" id="revisaoTabelaFonte"></p>
+        <div class="linha-form">
+          <div class="campo">
+            <label for="revTabelaTipo">Tabela</label>
+            <input type="text" id="revTabelaTipo" readonly style="opacity:.7;">
+          </div>
+          <div class="campo">
+            <label for="revTabelaVigencia">Vigente a partir de</label>
+            <input type="date" id="revTabelaVigencia" required>
+          </div>
+        </div>
+        <div class="tabela-scroll" style="margin-top:12px;">
+          <table id="tabelaRevisaoTabela">
+            <thead><tr><th>Ordem</th><th class="numero">De (R$)</th><th class="numero">Até (R$)</th><th class="numero">Alíquota (%)</th><th class="numero">Parcela a deduzir (R$)</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="subtexto" style="margin-top:8px;">Deixe "Até" em branco na última faixa (alíquota máxima, sem teto).</p>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="btn-secundario" id="btnAdicionarFaixaRevisao">+ faixa</button>
+          <button type="button" class="btn-primario" id="btnConfirmarTabela">Confirmar e salvar tabela</button>
+          <button type="button" class="btn-perigo" id="btnCancelarTabela">Cancelar</button>
+        </div>
+        <p class="status-msg" id="statusRevisaoTabela" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="cartao">
+        <h2>Nova faixa manual</h2>
+        <p class="subtexto">Cadastre ou corrija uma faixa isolada sem usar a busca automática.</p>
+        <form id="formFaixaManual" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="fmTipo">Tabela</label>
+              <select id="fmTipo" required>
+                <option value="INSS">INSS</option>
+                <option value="IRRF">IRRF</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="fmVigencia">Vigente a partir de</label>
+              <input type="date" id="fmVigencia" required>
+            </div>
+            <div class="campo">
+              <label for="fmOrdem">Ordem da faixa</label>
+              <input type="number" id="fmOrdem" min="1" required>
+            </div>
+          </div>
+          <div class="linha-form" style="margin-top:12px;">
+            <div class="campo">
+              <label for="fmDe">De (R$)</label>
+              <input type="number" id="fmDe" step="0.01" required>
+            </div>
+            <div class="campo">
+              <label for="fmAte">Até (R$) — vazio se última faixa</label>
+              <input type="number" id="fmAte" step="0.01">
+            </div>
+            <div class="campo">
+              <label for="fmAliquota">Alíquota (%)</label>
+              <input type="number" id="fmAliquota" step="0.01" required>
+            </div>
+            <div class="campo">
+              <label for="fmParcela">Parcela a deduzir (R$)</label>
+              <input type="number" id="fmParcela" step="0.01" value="0">
+            </div>
+          </div>
+          <div class="campo" style="margin-top:12px;max-width:420px;">
+            <label for="fmFonte">Fonte (norma/portaria)</label>
+            <input type="text" id="fmFonte" placeholder="Ex.: Portaria Interministerial MPS/MF nº 13/2026">
+          </div>
+          <button type="submit" class="btn-primario" id="btnSalvarFaixaManual" style="margin-top:12px;">Salvar faixa</button>
+        </form>
+        <p class="status-msg" id="statusFaixaManual" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="cartao">
+        <h2>Tabelas cadastradas</h2>
+        <div class="tabela-scroll">
+          <table id="tabelaTabelasOficiaisLista">
+            <thead><tr><th>Tabela</th><th>Vigência</th><th>Ordem</th><th class="numero">De</th><th class="numero">Até</th><th class="numero">Alíquota</th><th class="numero">Parcela deduzir</th><th>Fonte</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="vazio" id="vazioTabelasOficiaisLista">Nenhuma tabela cadastrada ainda.</p>
+      </div>
+    </div>
+
   </section>
 
 </main>
@@ -829,6 +942,7 @@ async function entrarNoApp(session){
   document.getElementById('lancMes').value = mesAtualInput();
   document.getElementById('filtroMesLancamentos').value = mesAtualInput();
   document.getElementById('oficialMes').value = mesAtualInput();
+  document.getElementById('btCompetencia').value = mesAtualInput();
   await carregarTudo();
 }
 
@@ -838,7 +952,7 @@ document.getElementById('btnSair').addEventListener('click', async () => {
 });
 
 /* ---------- Abas ---------- */
-const abas = ['Resumo','Lancamentos','Oficial','Originais','Rubricas','Config'];
+const abas = ['Resumo','Lancamentos','Oficial','Originais','Rubricas','Config','Tabelas'];
 
 function ativarAba(nome){
   abas.forEach(outra => {
@@ -1117,12 +1231,262 @@ async function carregarTabelasOficiais(){
   const { data, error } = await sb
     .from('contracheque_tabelas_oficiais')
     .select('*')
+    .order('tipo', { ascending: true })
     .order('vigencia_inicio', { ascending: false })
     .order('faixa_ordem', { ascending: true });
 
-  if(error){ cacheTabelasOficiais = []; return; }
+  if(error){ cacheTabelasOficiais = []; renderizarTabelasOficiaisLista(); return; }
   cacheTabelasOficiais = data || [];
+  renderizarTabelasOficiaisLista();
 }
+
+function renderizarTabelasOficiaisLista(){
+  const corpo = document.querySelector('#tabelaTabelasOficiaisLista tbody');
+  const vazio = document.getElementById('vazioTabelasOficiaisLista');
+  if(!corpo || !vazio) return;
+
+  if(cacheTabelasOficiais.length === 0){
+    corpo.innerHTML = '';
+    vazio.style.display = 'block';
+    return;
+  }
+  vazio.style.display = 'none';
+
+  corpo.innerHTML = cacheTabelasOficiais.map(row => `
+    <tr>
+      <td>${row.tipo}</td>
+      <td>${new Date(row.vigencia_inicio + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+      <td>${row.faixa_ordem}</td>
+      <td class="numero">${formatarMoeda(row.valor_de)}</td>
+      <td class="numero">${row.valor_ate != null ? formatarMoeda(row.valor_ate) : 'sem teto'}</td>
+      <td class="numero">${row.aliquota}%</td>
+      <td class="numero">${formatarMoeda(row.parcela_deduzir || 0)}</td>
+      <td>${row.fonte || ''}</td>
+      <td><button type="button" class="btn-perigo" data-id="${row.id}" data-acao="excluir-faixa">×</button></td>
+    </tr>
+  `).join('');
+}
+
+document.querySelector('#tabelaTabelasOficiaisLista tbody').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-acao="excluir-faixa"]');
+  if(!btn) return;
+  if(!confirm('Excluir esta faixa? Isso pode afetar o cálculo automático se a tabela ficar incompleta.')) return;
+  const { error } = await sb.from('contracheque_tabelas_oficiais').delete().eq('id', btn.dataset.id);
+  if(error){ alert('Erro ao excluir: ' + error.message); return; }
+  await carregarTabelasOficiais();
+});
+
+/* ---------- Nova faixa manual ---------- */
+document.getElementById('formFaixaManual').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const status = document.getElementById('statusFaixaManual');
+  const btn = document.getElementById('btnSalvarFaixaManual');
+
+  const registro = {
+    tipo: document.getElementById('fmTipo').value,
+    vigencia_inicio: document.getElementById('fmVigencia').value,
+    faixa_ordem: parseInt(document.getElementById('fmOrdem').value, 10),
+    valor_de: parseFloat(document.getElementById('fmDe').value),
+    valor_ate: document.getElementById('fmAte').value === '' ? null : parseFloat(document.getElementById('fmAte').value),
+    aliquota: parseFloat(document.getElementById('fmAliquota').value),
+    parcela_deduzir: document.getElementById('fmParcela').value === '' ? 0 : parseFloat(document.getElementById('fmParcela').value),
+    fonte: document.getElementById('fmFonte').value.trim() || null
+  };
+
+  if(!registro.vigencia_inicio || isNaN(registro.faixa_ordem) || isNaN(registro.valor_de) || isNaN(registro.aliquota)){
+    status.dataset.tipo = 'erro'; status.textContent = 'Preencha vigência, ordem, valor "de" e alíquota.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const { error } = await sb.from('contracheque_tabelas_oficiais').insert(registro);
+  btn.disabled = false; btn.textContent = 'Salvar faixa';
+
+  if(error){
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro: ' + error.message;
+    return;
+  }
+  status.dataset.tipo = 'ok'; status.textContent = 'Faixa salva.';
+  document.getElementById('formFaixaManual').reset();
+  document.getElementById('fmParcela').value = '0';
+  await carregarTabelasOficiais();
+});
+
+/* ---------- Busca automática de tabela oficial (INSS/IRRF) via IA ---------- */
+let contadorLinhaRevisaoTabela = 0;
+let tipoTabelaEmRevisao = null;
+
+document.getElementById('formBuscarTabela').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const status = document.getElementById('statusBuscarTabela');
+  const btn = document.getElementById('btnBuscarTabela');
+  const tipo = document.getElementById('btTipo').value;
+  const competencia = document.getElementById('btCompetencia').value; // AAAA-MM
+
+  if(!competencia){
+    status.dataset.tipo = 'erro'; status.textContent = 'Informe o mês/ano de referência.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Buscando…';
+  status.dataset.tipo = ''; status.textContent = 'Consultando fontes oficiais na web — isso pode levar alguns segundos…';
+
+  try{
+    const { data: sessao } = await sb.auth.getSession();
+    const resposta = await fetch('/api/buscar-tabela-oficial', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + sessao.session.access_token
+      },
+      body: JSON.stringify({ tipo, competenciaReferencia: competencia })
+    });
+    const resultado = await resposta.json();
+
+    if(!resposta.ok){
+      throw new Error(resultado.error || 'Erro desconhecido ao buscar a tabela.');
+    }
+
+    await fetch('/api/incrementar-ai-calls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + sessao.session.access_token
+      }
+    }).catch(err => console.log('Aviso: não foi possível contar uso de IA:', err));
+
+    status.dataset.tipo = 'ok';
+    status.textContent = 'Tabela localizada. Revise os valores abaixo antes de confirmar.';
+    abrirRevisaoTabela(resultado, tipo);
+  } catch(erro){
+    status.dataset.tipo = 'erro';
+    status.textContent = 'Não foi possível buscar automaticamente: ' + erro.message + '. Você pode cadastrar a faixa manualmente abaixo.';
+  }
+
+  btn.disabled = false; btn.textContent = 'Buscar com IA';
+});
+
+function abrirRevisaoTabela(resultado, tipoSolicitado){
+  tipoTabelaEmRevisao = resultado.tipo || tipoSolicitado;
+  const cartao = document.getElementById('cartaoRevisaoTabela');
+  document.getElementById('revTabelaTipo').value = tipoTabelaEmRevisao;
+  document.getElementById('revTabelaVigencia').value = resultado.vigencia_inicio || '';
+  document.getElementById('revisaoTabelaFonte').textContent = resultado.fonte
+    ? 'Fonte indicada pela IA: ' + resultado.fonte + '. Confira antes de confirmar.'
+    : 'A IA não indicou uma fonte específica — confira os valores com atenção antes de confirmar.';
+
+  const corpo = document.querySelector('#tabelaRevisaoTabela tbody');
+  corpo.innerHTML = '';
+  contadorLinhaRevisaoTabela = 0;
+  (resultado.faixas || []).forEach(f => adicionarLinhaRevisaoTabela(f));
+
+  cartao.style.display = 'block';
+  cartao.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function adicionarLinhaRevisaoTabela(faixa){
+  const corpo = document.querySelector('#tabelaRevisaoTabela tbody');
+  const id = 'revfaixa' + (contadorLinhaRevisaoTabela++);
+  const tr = document.createElement('tr');
+  tr.id = id;
+  const estiloInput = 'width:100%;min-width:70px;background:var(--ink);border:1px solid var(--ink-3);border-radius:6px;color:var(--paper);padding:6px;';
+  tr.innerHTML = `
+    <td><input type="number" class="rf-ordem" min="1" value="${faixa?.faixa_ordem ?? ''}" style="${estiloInput}"></td>
+    <td><input type="number" step="0.01" class="rf-de numero" value="${faixa?.valor_de ?? ''}" style="${estiloInput}"></td>
+    <td><input type="number" step="0.01" class="rf-ate numero" value="${faixa?.valor_ate ?? ''}" placeholder="sem teto" style="${estiloInput}"></td>
+    <td><input type="number" step="0.01" class="rf-aliquota numero" value="${faixa?.aliquota ?? ''}" style="${estiloInput}"></td>
+    <td><input type="number" step="0.01" class="rf-parcela numero" value="${faixa?.parcela_deduzir ?? 0}" style="${estiloInput}"></td>
+    <td><button type="button" class="btn-perigo" data-acao="remover-linha-faixa">×</button></td>
+  `;
+  corpo.appendChild(tr);
+}
+
+document.getElementById('btnAdicionarFaixaRevisao').addEventListener('click', () => {
+  const proximaOrdem = document.querySelectorAll('#tabelaRevisaoTabela tbody tr').length + 1;
+  adicionarLinhaRevisaoTabela({ faixa_ordem: proximaOrdem, valor_de: '', valor_ate: '', aliquota: '', parcela_deduzir: 0 });
+});
+
+document.querySelector('#tabelaRevisaoTabela tbody').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('button[data-acao="remover-linha-faixa"]');
+  if(!btn) return;
+  btn.closest('tr').remove();
+});
+
+document.getElementById('btnCancelarTabela').addEventListener('click', () => {
+  document.getElementById('cartaoRevisaoTabela').style.display = 'none';
+  tipoTabelaEmRevisao = null;
+});
+
+document.getElementById('btnConfirmarTabela').addEventListener('click', async () => {
+  const status = document.getElementById('statusRevisaoTabela');
+  const btn = document.getElementById('btnConfirmarTabela');
+  const vigencia = document.getElementById('revTabelaVigencia').value;
+  const tipo = document.getElementById('revTabelaTipo').value;
+
+  if(!vigencia || !tipo){
+    status.dataset.tipo = 'erro'; status.textContent = 'Informe tabela e vigência antes de confirmar.';
+    return;
+  }
+
+  const linhas = Array.from(document.querySelectorAll('#tabelaRevisaoTabela tbody tr'));
+  if(linhas.length === 0){
+    status.dataset.tipo = 'erro'; status.textContent = 'Adicione ao menos uma faixa antes de confirmar.';
+    return;
+  }
+
+  const faixas = [];
+  for(const tr of linhas){
+    const ordem = parseInt(tr.querySelector('.rf-ordem').value, 10);
+    const de = parseFloat(tr.querySelector('.rf-de').value);
+    const ateRaw = tr.querySelector('.rf-ate').value;
+    const aliquota = parseFloat(tr.querySelector('.rf-aliquota').value);
+    const parcelaRaw = tr.querySelector('.rf-parcela').value;
+    if(isNaN(ordem) || isNaN(de) || isNaN(aliquota)){
+      status.dataset.tipo = 'erro'; status.textContent = 'Cada faixa precisa de ordem, valor "de" e alíquota preenchidos.';
+      return;
+    }
+    faixas.push({
+      tipo,
+      vigencia_inicio: vigencia,
+      faixa_ordem: ordem,
+      valor_de: de,
+      valor_ate: ateRaw === '' ? null : parseFloat(ateRaw),
+      aliquota,
+      parcela_deduzir: parcelaRaw === '' ? 0 : parseFloat(parcelaRaw),
+      fonte: document.getElementById('revisaoTabelaFonte').textContent.replace('Fonte indicada pela IA: ', '').replace('. Confira antes de confirmar.', '') || null
+    });
+  }
+
+  btn.disabled = true; btn.textContent = 'Salvando…';
+
+  // Substitui por completo a tabela dessa vigência (tipo + vigencia_inicio), evitando
+  // faixas duplicadas ou desatualizadas se o usuário buscar/editar a mesma vigência de novo.
+  const { error: erroExclusao } = await sb
+    .from('contracheque_tabelas_oficiais')
+    .delete()
+    .eq('tipo', tipo)
+    .eq('vigencia_inicio', vigencia);
+
+  if(erroExclusao){
+    btn.disabled = false; btn.textContent = 'Confirmar e salvar tabela';
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro ao substituir tabela existente: ' + erroExclusao.message;
+    return;
+  }
+
+  const { error: erroInsercao } = await sb.from('contracheque_tabelas_oficiais').insert(faixas);
+  btn.disabled = false; btn.textContent = 'Confirmar e salvar tabela';
+
+  if(erroInsercao){
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro ao salvar: ' + erroInsercao.message;
+    return;
+  }
+
+  status.dataset.tipo = 'ok'; status.textContent = 'Tabela salva com sucesso.';
+  document.getElementById('cartaoRevisaoTabela').style.display = 'none';
+  tipoTabelaEmRevisao = null;
+  await carregarTabelasOficiais();
+  await carregarLancamentos();
+});
 
 function tabelaVigente(tipo, dataReferencia){
   const candidatas = cacheTabelasOficiais.filter(t => t.tipo === tipo && t.vigencia_inicio <= dataReferencia);

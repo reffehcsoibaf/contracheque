@@ -188,27 +188,23 @@ async function handleIncrementarAICalls(request, env) {
     return new Response(JSON.stringify({ error: 'Sessão não encontrada.' }), { status: 401, headers });
   }
 
-  const userResp = await fetch(env.SUPABASE_URL + '/auth/v1/user', {
-    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + accessToken }
-  });
-  if (!userResp.ok) {
-    return new Response(JSON.stringify({ error: 'Sessão inválida.' }), { status: 401, headers });
-  }
-  const userData = await userResp.json();
-
-  // Incrementa o contador de IA via SQL function (presume que existe increment_ai_calls_count)
-  const incrResp = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/increment_ai_calls_count', {
+  // Incrementa o contador de IA via SQL function security definer, que usa
+  // auth.uid() internamente (resolvido a partir do token do próprio usuário
+  // — não precisamos buscar o user_id à parte). Mesmo padrão do
+  // financeiro_increment_ai_calls / banca_increment_ai_calls.
+  const incrResp = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/contracheque_increment_ai_calls', {
     method: 'POST',
     headers: {
       apikey: env.SUPABASE_ANON_KEY,
       Authorization: 'Bearer ' + accessToken,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ user_id: userData.id, modulo: 'contracheque' })
+    body: '{}'
   });
 
   if (!incrResp.ok) {
-    return new Response(JSON.stringify({ error: 'Erro ao contar uso de IA.' }), { status: 500, headers });
+    const detalhe = await incrResp.text();
+    return new Response(JSON.stringify({ error: 'Erro ao contar uso de IA: ' + detalhe }), { status: 500, headers });
   }
 
   return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
@@ -248,6 +244,129 @@ async function handleIncrementarStorage(request, env) {
   return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
 }
 
+// ==================== BUSCA AUTOMÁTICA DE TABELA OFICIAL (INSS/IRRF) ====================
+// Usa a Anthropic com a ferramenta de busca na web para localizar a tabela
+// progressiva vigente numa competência informada, direto de fontes oficiais
+// (INSS/Receita Federal/legislação). SEMPRE retorna para revisão manual do
+// usuário antes de ser salva — nunca grava direto no banco.
+const PROMPT_BUSCA_TABELA = `Você é um assistente que localiza tabelas oficiais brasileiras de contribuição progressiva (INSS ou IRRF) usando busca na web.
+
+Você receberá o tipo de tabela ("INSS" ou "IRRF") e uma competência de referência (mês/ano) para a qual a tabela precisa estar vigente. Use a ferramenta de busca na web para encontrar, em fontes oficiais (gov.br, INSS, Receita Federal, Planalto, ou notícias confiáveis que citem a norma oficial), a tabela progressiva vigente nessa competência.
+
+Depois de pesquisar, responda com APENAS um objeto JSON (sem markdown, sem crases, sem texto antes ou depois), no formato:
+
+{
+  "tipo": "INSS" ou "IRRF",
+  "vigencia_inicio": "AAAA-MM-DD (primeiro dia de vigência da tabela encontrada)",
+  "fonte": "nome curto da norma oficial (ex.: 'Portaria Interministerial MPS/MF nº 13/2026', 'Lei 15.191/2025')",
+  "faixas": [
+    { "faixa_ordem": 1, "valor_de": 0, "valor_ate": número ou null, "aliquota": número (percentual, ex.: 7.5), "parcela_deduzir": número }
+  ]
+}
+
+Regras importantes:
+- "faixas" deve conter TODAS as faixas da tabela progressiva, em ordem crescente, com "faixa_ordem" começando em 1.
+- A última faixa (alíquota máxima) deve ter "valor_ate": null (sem teto).
+- "valor_de" de cada faixa deve ser exatamente 0.01 acima do "valor_ate" da faixa anterior (sem sobreposição nem lacuna), exceto a primeira faixa que começa em 0.
+- Para IRRF, use a tabela de desconto progressivo mensal (não a anual), e "parcela_deduzir" é o valor a deduzir do imposto calculado, não da base.
+- Se a busca não encontrar dados confiáveis o suficiente para a competência exata pedida, use a tabela oficial vigente mais recente que você encontrar e explique isso no campo "fonte" (ex.: "Tabela vigente desde jan/2026 — não localizada tabela mais recente para a competência pedida").
+- Nunca invente valores — se não conseguir confirmar um número em nenhuma fonte, é melhor retornar uma lista de faixas menor com os dados que você tem certeza, para o usuário completar manualmente.
+- Responda SOMENTE com o JSON, nada mais, nada de comentário sobre o processo de busca.`;
+
+async function handleBuscarTabelaOficial(request, env) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json',
+  };
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers });
+  }
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Método não permitido.' }), { status: 405, headers });
+  }
+
+  let acesso;
+  try {
+    acesso = await checarAcessoIA(request, env);
+  } catch (erroChecagem) {
+    return new Response(
+      JSON.stringify({ error: 'Erro ao checar permissão de IA: ' + erroChecagem.message }),
+      { status: 500, headers }
+    );
+  }
+  if (!acesso.ok) {
+    return new Response(JSON.stringify({ error: acesso.message }), { status: acesso.status, headers });
+  }
+
+  let payload;
+  try { payload = await request.json(); }
+  catch (e) { return new Response(JSON.stringify({ error: 'Corpo da requisição inválido.' }), { status: 400, headers }); }
+
+  const { tipo, competenciaReferencia } = payload || {};
+  if (!tipo || !['INSS', 'IRRF'].includes(tipo)) {
+    return new Response(JSON.stringify({ error: 'Informe "tipo" como "INSS" ou "IRRF".' }), { status: 400, headers });
+  }
+  if (!competenciaReferencia) {
+    return new Response(JSON.stringify({ error: 'Informe "competenciaReferencia" (AAAA-MM).' }), { status: 400, headers });
+  }
+
+  if (!env.ANTHROPIC_API_KEY) {
+    return new Response(
+      JSON.stringify({ error: 'ANTHROPIC_API_KEY não configurada neste Worker — necessária para a busca automática com IA.' }),
+      { status: 500, headers }
+    );
+  }
+
+  try {
+    const resultado = await buscarTabelaComAnthropic({ apiKey: env.ANTHROPIC_API_KEY, tipo, competenciaReferencia });
+    return new Response(JSON.stringify({ ...resultado, _provedor: 'anthropic-web-search' }), { status: 200, headers });
+  } catch (erro) {
+    return new Response(
+      JSON.stringify({ error: 'Não foi possível buscar a tabela automaticamente: ' + erro.message }),
+      { status: 502, headers }
+    );
+  }
+}
+
+async function buscarTabelaComAnthropic({ apiKey, tipo, competenciaReferencia }) {
+  const mensagemUsuario = `Tipo de tabela: ${tipo}\nCompetência de referência: ${competenciaReferencia}\n\nBusque a tabela oficial vigente nessa competência e responda no formato JSON indicado.`;
+
+  const corpoRequisicao = {
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4000,
+    system: [{ type: 'text', text: PROMPT_BUSCA_TABELA }],
+    tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    messages: [{ role: 'user', content: mensagemUsuario }],
+  };
+
+  const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify(corpoRequisicao),
+  });
+
+  if (!resposta.ok) {
+    const textoErro = await resposta.text();
+    throw new Error(`Anthropic retornou ${resposta.status}: ${textoErro}`);
+  }
+
+  const dados = await resposta.json();
+  const blocosTexto = (dados.content || []).filter((b) => b.type === 'text');
+  const blocoTexto = blocosTexto[blocosTexto.length - 1];
+  if (!blocoTexto) {
+    throw new Error('A IA não retornou uma resposta em texto (possivelmente ficou presa em chamadas de busca).');
+  }
+
+  const extraido = parsearJSON(blocoTexto.text);
+  if (!extraido || !Array.isArray(extraido.faixas) || extraido.faixas.length === 0) {
+    throw new Error('A resposta da IA não trouxe faixas utilizáveis. Tente novamente ou cadastre manualmente.');
+  }
+  return extraido;
+}
+
 // ---- HANDLER PRINCIPAL (formato Cloudflare Workers) ----
 export default {
   async fetch(request, env, ctx) {
@@ -283,6 +402,9 @@ async function handleFetch(request, env, ctx) {
   }
   if (url.pathname === '/api/incrementar-storage') {
     return handleIncrementarStorage(request, env);
+  }
+  if (url.pathname === '/api/buscar-tabela-oficial') {
+    return handleBuscarTabelaOficial(request, env);
   }
   if (url.pathname !== '/api/ler-contracheque') {
     return env.ASSETS.fetch(request);

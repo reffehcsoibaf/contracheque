@@ -1,9 +1,13 @@
 -- ==================== SCHEMA: MÓDULO CONTRACHEQUE ====================
--- Este arquivo documenta o schema já aplicado no Supabase (projeto "hubapp").
+-- Este arquivo documenta o schema já aplicado no Supabase (projeto "hubapp"),
+-- conferido diretamente no banco em produção. Seguro rodar mais de uma vez
+-- (idempotente): tabelas/policies só são recriadas se ainda não existirem
+-- (ou substituídas de forma equivalente, no caso das policies).
+--
 -- Todas as tabelas seguem o padrão dos demais módulos: RLS com
 -- auth.uid() = user_id AND modulo_habilitado('contracheque').
 
-create table public.contracheque_salario_base (
+create table if not exists public.contracheque_salario_base (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id),
   valor numeric not null,
@@ -12,7 +16,7 @@ create table public.contracheque_salario_base (
   created_at timestamptz not null default now()
 );
 
-create table public.contracheque_parametros_calculo (
+create table if not exists public.contracheque_parametros_calculo (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id),
   chave text not null,
@@ -24,7 +28,7 @@ create table public.contracheque_parametros_calculo (
   unique (user_id, chave, vigencia_inicio)
 );
 
-create table public.contracheque_tabelas_oficiais (
+create table if not exists public.contracheque_tabelas_oficiais (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id),
   tipo text not null check (tipo in ('INSS','IRRF')),
@@ -38,7 +42,7 @@ create table public.contracheque_tabelas_oficiais (
   created_at timestamptz not null default now()
 );
 
-create table public.contracheque_rubricas_catalogo (
+create table if not exists public.contracheque_rubricas_catalogo (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id),
   codigo text not null,
@@ -51,7 +55,7 @@ create table public.contracheque_rubricas_catalogo (
   unique (user_id, codigo)
 );
 
-create table public.contracheque_lancamentos_mes (
+create table if not exists public.contracheque_lancamentos_mes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id),
   mes_referencia date not null,
@@ -64,7 +68,7 @@ create table public.contracheque_lancamentos_mes (
   updated_at timestamptz not null default now()
 );
 
-create table public.contracheque_documentos_oficiais (
+create table if not exists public.contracheque_documentos_oficiais (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id),
   mes_referencia date not null,
@@ -77,7 +81,7 @@ create table public.contracheque_documentos_oficiais (
   criado_em timestamptz not null default now()
 );
 
-create table public.contracheque_itens_oficiais (
+create table if not exists public.contracheque_itens_oficiais (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id),
   documento_id uuid not null references public.contracheque_documentos_oficiais(id) on delete cascade,
@@ -90,7 +94,7 @@ create table public.contracheque_itens_oficiais (
   created_at timestamptz not null default now()
 );
 
-create table public.contracheque_divergencias (
+create table if not exists public.contracheque_divergencias (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id),
   documento_id uuid not null references public.contracheque_documentos_oficiais(id) on delete cascade,
@@ -103,11 +107,129 @@ create table public.contracheque_divergencias (
   created_at timestamptz not null default now()
 );
 
--- RLS habilitada em todas as tabelas acima, com policy padrão:
---   using (auth.uid() = user_id and modulo_habilitado('contracheque'))
---   with check (auth.uid() = user_id and modulo_habilitado('contracheque'))
+-- ---- contracheque_meses_confirmados ----
+-- Trava a aba "Lançamentos do mês" após o usuário confirmar o mês contra o
+-- contracheque oficial: existência de uma linha aqui para (user_id,
+-- mes_referencia) = mês travado (somente leitura no app, com botão de
+-- reabrir que apaga a linha). Tabela existia em produção mas não estava
+-- documentada neste arquivo até esta atualização.
+create table if not exists public.contracheque_meses_confirmados (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id),
+  mes_referencia date not null,
+  confirmado_em timestamptz not null default now(),
+  unique (user_id, mes_referencia)
+);
 
--- Storage: é necessário criar manualmente o bucket "contracheque-documentos"
--- no painel do Supabase (Storage), com política de acesso restrita ao
--- próprio usuário, no mesmo padrão usado pelo bucket de documentos do
--- módulo Controle Financeiro.
+-- ---- RLS: contracheque_* ----
+-- Padrão real aplicado em produção: UMA policy "for all" por tabela
+-- (em vez de 4 policies separadas select/insert/update/delete, como em
+-- outros módulos), sempre com o mesmo using/with check.
+alter table public.contracheque_salario_base enable row level security;
+alter table public.contracheque_parametros_calculo enable row level security;
+alter table public.contracheque_tabelas_oficiais enable row level security;
+alter table public.contracheque_rubricas_catalogo enable row level security;
+alter table public.contracheque_lancamentos_mes enable row level security;
+alter table public.contracheque_documentos_oficiais enable row level security;
+alter table public.contracheque_itens_oficiais enable row level security;
+alter table public.contracheque_divergencias enable row level security;
+alter table public.contracheque_meses_confirmados enable row level security;
+
+drop policy if exists "contracheque_salario_base: somente o proprio usuario" on public.contracheque_salario_base;
+create policy "contracheque_salario_base: somente o proprio usuario"
+  on public.contracheque_salario_base for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_parametros_calculo: somente o proprio usuario" on public.contracheque_parametros_calculo;
+create policy "contracheque_parametros_calculo: somente o proprio usuario"
+  on public.contracheque_parametros_calculo for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_tabelas_oficiais: somente o proprio usuario" on public.contracheque_tabelas_oficiais;
+create policy "contracheque_tabelas_oficiais: somente o proprio usuario"
+  on public.contracheque_tabelas_oficiais for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_rubricas_catalogo: somente o proprio usuario" on public.contracheque_rubricas_catalogo;
+create policy "contracheque_rubricas_catalogo: somente o proprio usuario"
+  on public.contracheque_rubricas_catalogo for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_lancamentos_mes: somente o proprio usuario" on public.contracheque_lancamentos_mes;
+create policy "contracheque_lancamentos_mes: somente o proprio usuario"
+  on public.contracheque_lancamentos_mes for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_documentos_oficiais: somente o proprio usuario" on public.contracheque_documentos_oficiais;
+create policy "contracheque_documentos_oficiais: somente o proprio usuario"
+  on public.contracheque_documentos_oficiais for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_itens_oficiais: somente o proprio usuario" on public.contracheque_itens_oficiais;
+create policy "contracheque_itens_oficiais: somente o proprio usuario"
+  on public.contracheque_itens_oficiais for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_divergencias: somente o proprio usuario" on public.contracheque_divergencias;
+create policy "contracheque_divergencias: somente o proprio usuario"
+  on public.contracheque_divergencias for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_meses_confirmados: somente o proprio usuario" on public.contracheque_meses_confirmados;
+create policy "contracheque_meses_confirmados: somente o proprio usuario"
+  on public.contracheque_meses_confirmados for all
+  using (auth.uid() = user_id and public.modulo_habilitado('contracheque'))
+  with check (auth.uid() = user_id and public.modulo_habilitado('contracheque'));
+
+-- ------------------------------------------------------------
+-- STORAGE — bucket "contracheque-documentos"
+-- O bucket em si precisa ser criado manualmente no painel do Supabase
+-- (Storage → New bucket → "contracheque-documentos", privado). As 4
+-- políticas abaixo já estão aplicadas em produção e replicam o padrão
+-- usado no bucket "documentos" do Controle Financeiro, adaptadas para
+-- profiles_modulos (módulo 'contracheque').
+-- ------------------------------------------------------------
+drop policy if exists "contracheque_documentos_storage_select_proprio" on storage.objects;
+create policy "contracheque_documentos_storage_select_proprio"
+  on storage.objects for select
+  using (bucket_id = 'contracheque-documentos' and (storage.foldername(name))[1] = auth.uid()::text and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_documentos_storage_insert_proprio" on storage.objects;
+create policy "contracheque_documentos_storage_insert_proprio"
+  on storage.objects for insert
+  with check (bucket_id = 'contracheque-documentos' and (storage.foldername(name))[1] = auth.uid()::text and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_documentos_storage_update_proprio" on storage.objects;
+create policy "contracheque_documentos_storage_update_proprio"
+  on storage.objects for update
+  using (bucket_id = 'contracheque-documentos' and (storage.foldername(name))[1] = auth.uid()::text and public.modulo_habilitado('contracheque'));
+
+drop policy if exists "contracheque_documentos_storage_delete_proprio" on storage.objects;
+create policy "contracheque_documentos_storage_delete_proprio"
+  on storage.objects for delete
+  using (bucket_id = 'contracheque-documentos' and (storage.foldername(name))[1] = auth.uid()::text and public.modulo_habilitado('contracheque'));
+
+-- ---- FUNÇÃO: incremento de uso de IA (Contracheque) ----
+-- Mesmo padrão do financeiro_increment_ai_calls / banca_increment_ai_calls:
+-- sem parâmetros, resolve o usuário via auth.uid() (token do próprio
+-- usuário), security definer para poder escrever em profiles_modulos.
+-- Corrige bug encontrado em produção: o worker.js chamava uma função
+-- "increment_ai_calls_count" que nunca existiu no banco, então o contador
+-- de uso de IA do módulo Contracheque nunca era incrementado.
+create or replace function public.contracheque_increment_ai_calls()
+returns void
+language sql
+security definer
+as $$
+  update public.profiles_modulos
+  set ai_calls_count = ai_calls_count + 1
+  where user_id = auth.uid() and modulo = 'contracheque';
+$$;
