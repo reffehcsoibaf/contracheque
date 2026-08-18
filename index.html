@@ -1584,10 +1584,26 @@ document.getElementById('formUploadOficial').addEventListener('submit', async (e
     return;
   }
 
-  btn.disabled = true; btn.textContent = 'Enviando…';
+  btn.disabled = true; btn.textContent = 'Validando acesso…';
   status.dataset.tipo = ''; status.textContent = '';
 
+  // Validar acesso a documentos antes de fazer upload
+  const sessaoAtual = await sb.auth.getSession();
+  const acessoDocResp = await fetch('/api/checar-acesso-documentos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessaoAtual.data.session.access_token }
+  });
+
+  if (!acessoDocResp.ok) {
+    const acessoDocData = await acessoDocResp.json();
+    btn.disabled = false; btn.textContent = 'Enviar documento';
+    status.dataset.tipo = 'erro';
+    status.textContent = acessoDocData.error || 'Erro ao validar acesso.';
+    return;
+  }
+
   const caminho = usuarioAtual.id + '/' + mes + '-' + Date.now() + '-' + arquivo.name;
+  btn.textContent = 'Enviando…';
 
   const { error: erroUpload } = await sb.storage.from(BUCKET_DOCUMENTOS).upload(caminho, arquivo, {
     contentType: 'application/pdf'
@@ -1635,6 +1651,15 @@ document.getElementById('formUploadOficial').addEventListener('submit', async (e
     }
 
     await sb.from('contracheque_documentos_oficiais').update({ status_extracao: 'extraido' }).eq('id', docInserido.id);
+
+    // Incrementar contador de IA após sucesso
+    await fetch('/api/incrementar-ai-calls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + sessao.session.access_token
+      }
+    }).catch(err => console.log('Aviso: não foi possível contar uso de IA:', err));
 
     status.dataset.tipo = 'ok';
     status.textContent = 'Documento lido com sucesso. Revise os itens abaixo antes de confirmar.';

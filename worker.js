@@ -103,6 +103,151 @@ async function checarAcessoIA(request, env) {
   return { ok: true };
 }
 
+// ---- Checagem de acesso a documentos: valida o token do usuário e confere documents_enabled ----
+async function checarAcessoDocumentos(request, env) {
+  const authHeader = request.headers.get('Authorization') || '';
+  const accessToken = authHeader.replace(/^Bearer\s+/i, '');
+
+  if (!accessToken) {
+    return { ok: false, status: 401, message: 'Sessão não encontrada. Faça login novamente.' };
+  }
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
+    return { ok: false, status: 500, message: 'Configuração do Supabase ausente no servidor (SUPABASE_URL / SUPABASE_ANON_KEY).' };
+  }
+
+  const userResp = await fetch(env.SUPABASE_URL + '/auth/v1/user', {
+    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + accessToken }
+  });
+  if (!userResp.ok) {
+    return { ok: false, status: 401, message: 'Sessão inválida ou expirada. Faça login novamente.' };
+  }
+  const userData = await userResp.json();
+
+  const profileResp = await fetch(
+    env.SUPABASE_URL + '/rest/v1/profiles_modulos?user_id=eq.' + userData.id + '&modulo=eq.contracheque&select=documents_enabled',
+    { headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + accessToken } }
+  );
+  if (!profileResp.ok) {
+    return { ok: false, status: 500, message: 'Não foi possível checar sua permissão de armazenamento de documentos.' };
+  }
+  const rows = await profileResp.json();
+  if (!rows.length || rows[0].documents_enabled !== true) {
+    return { ok: false, status: 403, message: 'O acesso ao armazenamento de documentos está desativado para este usuário no módulo Contracheque.' };
+  }
+
+  return { ok: true };
+}
+
+async function handleChecarAcessoDocumentos(request, env) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json',
+  };
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers });
+  }
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Método não permitido.' }), { status: 405, headers });
+  }
+
+  let acesso;
+  try {
+    acesso = await checarAcessoDocumentos(request, env);
+  } catch (erro) {
+    return new Response(JSON.stringify({ error: 'Erro ao checar permissão: ' + erro.message }), { status: 500, headers });
+  }
+  if (!acesso.ok) {
+    return new Response(JSON.stringify({ error: acesso.message }), { status: acesso.status, headers });
+  }
+
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+}
+
+async function handleIncrementarAICalls(request, env) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json',
+  };
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers });
+  }
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Método não permitido.' }), { status: 405, headers });
+  }
+
+  const authHeader = request.headers.get('Authorization') || '';
+  const accessToken = authHeader.replace(/^Bearer\s+/i, '');
+
+  if (!accessToken) {
+    return new Response(JSON.stringify({ error: 'Sessão não encontrada.' }), { status: 401, headers });
+  }
+
+  const userResp = await fetch(env.SUPABASE_URL + '/auth/v1/user', {
+    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + accessToken }
+  });
+  if (!userResp.ok) {
+    return new Response(JSON.stringify({ error: 'Sessão inválida.' }), { status: 401, headers });
+  }
+  const userData = await userResp.json();
+
+  // Incrementa o contador de IA via SQL function (presume que existe increment_ai_calls_count)
+  const incrResp = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/increment_ai_calls_count', {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_ANON_KEY,
+      Authorization: 'Bearer ' + accessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ user_id: userData.id, modulo: 'contracheque' })
+  });
+
+  if (!incrResp.ok) {
+    return new Response(JSON.stringify({ error: 'Erro ao contar uso de IA.' }), { status: 500, headers });
+  }
+
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+}
+
+async function handleIncrementarStorage(request, env) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json',
+  };
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers });
+  }
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Método não permitido.' }), { status: 405, headers });
+  }
+
+  const authHeader = request.headers.get('Authorization') || '';
+  const accessToken = authHeader.replace(/^Bearer\s+/i, '');
+
+  if (!accessToken) {
+    return new Response(JSON.stringify({ error: 'Sessão não encontrada.' }), { status: 401, headers });
+  }
+
+  const userResp = await fetch(env.SUPABASE_URL + '/auth/v1/user', {
+    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + accessToken }
+  });
+  if (!userResp.ok) {
+    return new Response(JSON.stringify({ error: 'Sessão inválida.' }), { status: 401, headers });
+  }
+
+  // O contador de armazenamento é calculado automaticamente pelos contadores de storage do Supabase
+  // Esta rota é mais para futuro se precisarmos de lógica customizada
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+}
+
 // ---- HANDLER PRINCIPAL (formato Cloudflare Workers) ----
 export default {
   async fetch(request, env, ctx) {
@@ -130,6 +275,15 @@ async function handleFetch(request, env, ctx) {
 
   // Só tratamos aqui a rota da API. Qualquer outra URL (o próprio site) é
   // devolvida pelos arquivos estáticos normalmente.
+  if (url.pathname === '/api/checar-acesso-documentos') {
+    return handleChecarAcessoDocumentos(request, env);
+  }
+  if (url.pathname === '/api/incrementar-ai-calls') {
+    return handleIncrementarAICalls(request, env);
+  }
+  if (url.pathname === '/api/incrementar-storage') {
+    return handleIncrementarStorage(request, env);
+  }
   if (url.pathname !== '/api/ler-contracheque') {
     return env.ASSETS.fetch(request);
   }
