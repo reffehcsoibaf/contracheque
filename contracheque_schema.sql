@@ -233,3 +233,74 @@ as $$
   set ai_calls_count = ai_calls_count + 1
   where user_id = auth.uid() and modulo = 'contracheque';
 $$;
+
+-- ------------------------------------------------------------
+-- MIGRAÇÃO: lançamentos recorrentes diários (refeição, falta,
+-- atraso, atestado) com data do evento + cálculo automático
+-- por rubrica a partir do salário-base.
+-- ------------------------------------------------------------
+
+-- Data do evento, para lançamentos recorrentes diários. Fica null para
+-- lançamentos "de mês inteiro" (ex.: insalubridade, adicional por tempo de
+-- serviço).
+alter table public.contracheque_lancamentos_mes
+  add column if not exists data_evento date;
+
+-- Marca rubricas que aceitam registro rápido dia a dia (1 clique = 1 evento
+-- com data), e como o valor de cada evento deve ser calculado.
+alter table public.contracheque_rubricas_catalogo
+  add column if not exists lancamento_recorrente boolean not null default false;
+
+alter table public.contracheque_rubricas_catalogo
+  add column if not exists unidade_calculo text
+  check (unidade_calculo in ('valor_fixo_evento','salario_por_dia','salario_por_hora','sem_calculo'));
+
+comment on column public.contracheque_rubricas_catalogo.unidade_calculo is
+  'Como o app calcula o valor de cada evento recorrente:
+   valor_fixo_evento = usa o parâmetro de cálculo "valor_evento_<codigo>" x quantidade;
+   salario_por_dia    = (salário-base / parâmetro "dias_mes_referencia") x quantidade;
+   salario_por_hora   = (salário-base / parâmetro "carga_horaria_mensal") x quantidade;
+   sem_calculo        = só registra data/quantidade, sem gerar valor automático (ex.: atestado médico).';
+
+-- Configuração inicial das rubricas recorrentes já existentes no catálogo:
+update public.contracheque_rubricas_catalogo
+  set lancamento_recorrente = true, unidade_calculo = 'valor_fixo_evento'
+  where codigo = '7623'; -- Refeição industrial
+
+update public.contracheque_rubricas_catalogo
+  set lancamento_recorrente = true, unidade_calculo = 'salario_por_dia'
+  where codigo = '84A1'; -- Faltas injustificadas
+
+update public.contracheque_rubricas_catalogo
+  set lancamento_recorrente = true, unidade_calculo = 'sem_calculo'
+  where codigo = '2B05'; -- Atestado médico (não gera valor sozinho; serve para
+                          -- registrar/comparar contra o oficial e, futuramente,
+                          -- abater faltas já lançadas no mesmo período)
+
+-- Rubrica de atraso ainda sem código oficial de folha identificado; o código
+-- pode ser corrigido depois, quando aparecer num contracheque real
+-- (edição de rubrica ainda não tem UI própria — corrigir direto no banco ou
+-- excluir e recriar com o código correto).
+insert into public.contracheque_rubricas_catalogo
+  (user_id, codigo, descricao, tipo, categoria, origem, lancamento_recorrente, unidade_calculo)
+select auth.uid(), 'ATRASO-MANUAL', 'Atraso', 'desconto', 'falta_atraso', 'manual', true, 'salario_por_hora'
+where not exists (
+  select 1 from public.contracheque_rubricas_catalogo
+  where user_id = auth.uid() and codigo = 'ATRASO-MANUAL'
+);
+
+-- Parâmetros globais usados para converter dia/hora em R$ a partir do
+-- salário-base (podem ser ajustados em Configurações a qualquer momento;
+-- os valores abaixo são defaults comuns de mercado, não a convenção
+-- coletiva de ninguém em específico).
+insert into public.contracheque_parametros_calculo (user_id, chave, descricao, tipo_valor, valor, vigencia_inicio)
+select auth.uid(), 'dias_mes_referencia', 'Divisor de dias para calcular o valor de 1 dia de falta a partir do salário-base', 'fixo', 30, current_date
+where not exists (
+  select 1 from public.contracheque_parametros_calculo where user_id = auth.uid() and chave = 'dias_mes_referencia'
+);
+
+insert into public.contracheque_parametros_calculo (user_id, chave, descricao, tipo_valor, valor, vigencia_inicio)
+select auth.uid(), 'carga_horaria_mensal', 'Divisor de horas para calcular o valor de 1 hora de atraso a partir do salário-base', 'fixo', 220, current_date
+where not exists (
+  select 1 from public.contracheque_parametros_calculo where user_id = auth.uid() and chave = 'carga_horaria_mensal'
+);

@@ -454,6 +454,10 @@
           </div>
           <div class="linha-form" style="margin-top:12px;">
             <div class="campo">
+              <label for="lancDataEvento">Data do evento (opcional)</label>
+              <input type="date" id="lancDataEvento">
+            </div>
+            <div class="campo">
               <label for="lancDescricao">Descrição</label>
               <input type="text" id="lancDescricao" required placeholder="Ex.: Hora extra dia 12">
             </div>
@@ -463,9 +467,10 @@
             </div>
             <div class="campo">
               <label for="lancValor">Valor calculado (opcional)</label>
-              <input type="number" id="lancValor" step="0.01" placeholder="R$">
+              <input type="number" id="lancValor" step="0.01" placeholder="R$ — deixe em branco para calcular automático">
             </div>
           </div>
+          <p class="subtexto" id="lancAjudaRecorrente" style="margin-top:8px;display:none;"></p>
           <div class="campo" style="margin-top:12px;">
             <label for="lancObs">Observações</label>
             <textarea id="lancObs" rows="2"></textarea>
@@ -473,6 +478,13 @@
           <button type="submit" class="btn-primario" id="btnSalvarLancamento">Adicionar lançamento</button>
         </form>
         <p class="status-msg" id="statusLancamento" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="cartao" id="cartaoRecorrentesMes">
+        <h2>Recorrentes do mês</h2>
+        <p class="subtexto">Histórico dos dias registrados para cada rubrica recorrente (refeição, faltas, atrasos, atestados) e o somatório do mês.</p>
+        <div id="listaRecorrentesMes"></div>
+        <p class="vazio" id="vazioRecorrentesMes">Nenhum lançamento recorrente neste mês ainda.</p>
       </div>
 
       <div class="cartao">
@@ -485,7 +497,7 @@
           <table id="tabelaLancamentos">
             <thead>
               <tr>
-                <th>Mês</th><th>Rubrica</th><th>Descrição</th><th class="numero">Qtd.</th><th class="numero">Valor</th><th></th>
+                <th>Mês</th><th>Data</th><th>Rubrica</th><th>Descrição</th><th class="numero">Qtd.</th><th class="numero">Valor</th><th></th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -668,6 +680,21 @@
               <option value="outros_descontos">Outros descontos</option>
             </select>
           </div>
+          <div class="linha-form" style="margin-top:12px;">
+            <div class="campo" style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="rubRecorrente" style="width:auto;">
+              <label for="rubRecorrente" style="margin:0;">Lançamento recorrente diário (ex.: refeição, falta, atraso, atestado)</label>
+            </div>
+          </div>
+          <div class="campo" id="campoUnidadeCalculo" style="margin-top:12px;max-width:360px;display:none;">
+            <label for="rubUnidadeCalculo">Como calcular o valor de cada evento</label>
+            <select id="rubUnidadeCalculo">
+              <option value="valor_fixo_evento">Valor fixo por evento (ex.: 1 refeição = R$ X)</option>
+              <option value="salario_por_dia">Salário-base ÷ dias do mês (ex.: 1 falta)</option>
+              <option value="salario_por_hora">Salário-base ÷ carga horária mensal (ex.: 1 hora de atraso)</option>
+              <option value="sem_calculo">Só registrar data/quantidade, sem calcular valor (ex.: atestado médico)</option>
+            </select>
+          </div>
           <button type="submit" class="btn-primario" id="btnSalvarRubrica" style="margin-top:12px;">Adicionar rubrica</button>
         </form>
         <p class="status-msg" id="statusRubrica" role="status" aria-live="polite"></p>
@@ -678,7 +705,7 @@
         <div class="tabela-scroll">
           <table id="tabelaRubricas">
             <thead>
-              <tr><th>Código</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Origem</th><th></th></tr>
+              <tr><th>Código</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Recorrente</th><th>Origem</th><th></th></tr>
             </thead>
             <tbody></tbody>
           </table>
@@ -711,6 +738,13 @@
             <tbody></tbody>
           </table>
         </div>
+      </div>
+
+      <div class="cartao">
+        <h2>Valor por evento (rubricas recorrentes)</h2>
+        <p class="subtexto">Para rubricas marcadas como "recorrente" com cálculo "Valor fixo/evento" (ex.: refeição industrial) — defina aqui quanto vale 1 evento. Falta e atraso não precisam disso: são calculados a partir do salário-base (veja os parâmetros "dias_mes_referencia" e "carga_horaria_mensal" abaixo).</p>
+        <div id="listaValorEvento"></div>
+        <p class="vazio" id="vazioValorEvento">Nenhuma rubrica com cálculo "Valor fixo/evento" cadastrada ainda.</p>
       </div>
 
       <div class="cartao">
@@ -754,6 +788,36 @@
 
     <!-- ---------- TABELAS OFICIAIS (INSS/IRRF) ---------- -->
     <div class="painel-aba" id="painelTabelas" role="tabpanel" aria-labelledby="tabTabelas">
+      <div class="cartao">
+        <h2>Salário mínimo nacional</h2>
+        <p class="subtexto">Usa IA com busca na web para localizar o valor vigente do salário mínimo nacional, direto de fontes oficiais. Impacta o cálculo de insalubridade (20% do salário mínimo). Sempre revise antes de confirmar.</p>
+        <div class="linha-form">
+          <div class="campo">
+            <label for="smCompetencia">Vigente em (mês/ano de referência)</label>
+            <input type="month" id="smCompetencia">
+          </div>
+        </div>
+        <button type="button" class="btn-primario" id="btnBuscarSalarioMinimo" style="margin-top:12px;">Buscar com IA</button>
+        <p class="status-msg" id="statusBuscarSalarioMinimo" role="status" aria-live="polite"></p>
+        <div class="cartao" id="cartaoRevisaoSalarioMinimo" style="display:none;margin-top:12px;background:transparent;">
+          <p class="subtexto" id="revisaoSalarioMinimoFonte"></p>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="revSalarioMinimoValor">Valor (R$)</label>
+              <input type="number" step="0.01" id="revSalarioMinimoValor">
+            </div>
+            <div class="campo">
+              <label for="revSalarioMinimoVigencia">Vigente a partir de</label>
+              <input type="date" id="revSalarioMinimoVigencia">
+            </div>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn-primario" id="btnConfirmarSalarioMinimo">Confirmar e salvar</button>
+            <button type="button" class="btn-perigo" id="btnCancelarSalarioMinimo">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
       <div class="cartao">
         <h2>Buscar tabela oficial atualizada</h2>
         <p class="subtexto">Usa IA com busca na web para localizar a tabela de INSS ou IRRF vigente na competência informada, direto de fontes oficiais. Sempre revise os valores antes de confirmar — a IA pode errar.</p>
@@ -943,6 +1007,7 @@ async function entrarNoApp(session){
   document.getElementById('filtroMesLancamentos').value = mesAtualInput();
   document.getElementById('oficialMes').value = mesAtualInput();
   document.getElementById('btCompetencia').value = mesAtualInput();
+  document.getElementById('smCompetencia').value = mesAtualInput();
   await carregarTudo();
 }
 
@@ -1012,8 +1077,68 @@ async function carregarTudo(){
     carregarOriginais(),
     carregarTabelasOficiais()
   ]);
+  atualizarValorEventoUI();
   await carregarLancamentos();
 }
+
+function atualizarValorEventoUI(){
+  const container = document.getElementById('listaValorEvento');
+  const vazio = document.getElementById('vazioValorEvento');
+  const rubricasComValorFixo = cacheRubricas.filter(r => r.lancamento_recorrente && r.unidade_calculo === 'valor_fixo_evento');
+
+  if(rubricasComValorFixo.length === 0){
+    container.innerHTML = '';
+    vazio.style.display = 'block';
+    return;
+  }
+  vazio.style.display = 'none';
+
+  container.innerHTML = rubricasComValorFixo.map(r => {
+    const chave = 'valor_evento_' + r.codigo;
+    const atual = valorParametro(chave, null);
+    return `
+      <div class="linha-form" style="align-items:flex-end;margin-bottom:10px;">
+        <div class="campo" style="flex:2;">
+          <label>${r.descricao} (${r.codigo})</label>
+          <span style="display:block;opacity:.75;font-size:0.9em;">${atual != null ? 'Valor atual: ' + formatarMoeda(atual) : 'Ainda não definido'}</span>
+        </div>
+        <div class="campo">
+          <label for="valorEvento_${r.codigo}">Novo valor por evento (R$)</label>
+          <input type="number" step="0.01" id="valorEvento_${r.codigo}" placeholder="${atual != null ? atual : 'Ex.: 12.50'}">
+        </div>
+        <button type="button" class="btn-primario" data-acao="salvar-valor-evento" data-codigo="${r.codigo}">Salvar</button>
+      </div>
+    `;
+  }).join('');
+}
+
+document.getElementById('listaValorEvento').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-acao="salvar-valor-evento"]');
+  if(!btn) return;
+  const codigo = btn.dataset.codigo;
+  const input = document.getElementById('valorEvento_' + codigo);
+  const valor = parseFloat(input.value);
+  if(isNaN(valor)){
+    alert('Informe um valor numérico.');
+    return;
+  }
+  const rub = cacheRubricas.find(r => r.codigo === codigo);
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const { error } = await sb.from('contracheque_parametros_calculo').insert({
+    chave: 'valor_evento_' + codigo,
+    descricao: 'Valor por evento — ' + (rub ? rub.descricao : codigo),
+    tipo_valor: 'fixo',
+    valor,
+    vigencia_inicio: new Date().toISOString().slice(0, 10)
+  });
+  btn.disabled = false; btn.textContent = 'Salvar';
+  if(error){
+    alert('Erro ao salvar: ' + error.message);
+    return;
+  }
+  await carregarParametros();
+  atualizarValorEventoUI();
+});
 
 /* ---------- Salário-base ---------- */
 async function carregarSalarioBase(){
@@ -1132,6 +1257,17 @@ document.getElementById('formParametro').addEventListener('submit', async (ev) =
 });
 
 /* ---------- Rubricas ---------- */
+document.getElementById('rubRecorrente').addEventListener('change', (ev) => {
+  document.getElementById('campoUnidadeCalculo').style.display = ev.target.checked ? 'block' : 'none';
+});
+
+const ROTULOS_UNIDADE_CALCULO = {
+  valor_fixo_evento: 'Valor fixo/evento',
+  salario_por_dia: 'Salário ÷ dia',
+  salario_por_hora: 'Salário ÷ hora',
+  sem_calculo: 'Sem cálculo automático'
+};
+
 const ROTULOS_CATEGORIA = {
   salario_base: 'Salário-base',
   inss: 'INSS',
@@ -1173,7 +1309,7 @@ async function carregarRubricas(){
     cacheRubricas.map(r => `<option value="${r.codigo}">${r.codigo} — ${r.descricao}</option>`).join('');
 
   if(cacheRubricas.length === 0){
-    corpo.innerHTML = '<tr><td colspan="6" class="vazio">Nenhuma rubrica cadastrada.</td></tr>';
+    corpo.innerHTML = '<tr><td colspan="7" class="vazio">Nenhuma rubrica cadastrada.</td></tr>';
     return;
   }
 
@@ -1183,6 +1319,7 @@ async function carregarRubricas(){
       <td>${r.descricao}</td>
       <td><span class="badge badge-${r.tipo}">${r.tipo === 'provento' ? 'Provento' : 'Desconto'}</span></td>
       <td>${ROTULOS_CATEGORIA[r.categoria] || r.categoria}</td>
+      <td>${r.lancamento_recorrente ? (ROTULOS_UNIDADE_CALCULO[r.unidade_calculo] || 'Sim') : '—'}</td>
       <td>${r.origem === 'ia' ? 'IA' : 'Manual'}</td>
       <td><button type="button" class="btn-perigo" data-id="${r.id}" data-acao="excluir-rubrica">Excluir</button></td>
     </tr>
@@ -1195,6 +1332,8 @@ document.getElementById('formRubrica').addEventListener('submit', async (ev) => 
   const descricao = document.getElementById('rubDescricao').value.trim();
   const tipo = document.getElementById('rubTipo').value;
   const categoria = document.getElementById('rubCategoria').value;
+  const recorrente = document.getElementById('rubRecorrente').checked;
+  const unidadeCalculo = recorrente ? document.getElementById('rubUnidadeCalculo').value : null;
   const status = document.getElementById('statusRubrica');
   const btn = document.getElementById('btnSalvarRubrica');
 
@@ -1205,7 +1344,8 @@ document.getElementById('formRubrica').addEventListener('submit', async (ev) => 
 
   btn.disabled = true; btn.textContent = 'Salvando…';
   const { error } = await sb.from('contracheque_rubricas_catalogo').insert({
-    codigo, descricao, tipo, categoria, origem: 'manual'
+    codigo, descricao, tipo, categoria, origem: 'manual',
+    lancamento_recorrente: recorrente, unidade_calculo: unidadeCalculo
   });
   btn.disabled = false; btn.textContent = 'Adicionar rubrica';
 
@@ -1215,6 +1355,7 @@ document.getElementById('formRubrica').addEventListener('submit', async (ev) => 
   }
   status.dataset.tipo = 'ok'; status.textContent = 'Rubrica adicionada.';
   document.getElementById('formRubrica').reset();
+  document.getElementById('campoUnidadeCalculo').style.display = 'none';
   await carregarRubricas();
 });
 
@@ -1310,6 +1451,88 @@ document.getElementById('formFaixaManual').addEventListener('submit', async (ev)
   document.getElementById('formFaixaManual').reset();
   document.getElementById('fmParcela').value = '0';
   await carregarTabelasOficiais();
+});
+
+/* ---------- Busca automática do salário mínimo nacional via IA ---------- */
+document.getElementById('btnBuscarSalarioMinimo').addEventListener('click', async () => {
+  const status = document.getElementById('statusBuscarSalarioMinimo');
+  const btn = document.getElementById('btnBuscarSalarioMinimo');
+  const competencia = document.getElementById('smCompetencia').value || mesAtualInput();
+
+  btn.disabled = true; btn.textContent = 'Buscando…';
+  status.dataset.tipo = ''; status.textContent = 'Consultando fontes oficiais na web — isso pode levar alguns segundos…';
+
+  try{
+    const { data: sessao } = await sb.auth.getSession();
+    const resposta = await fetch('/api/buscar-salario-minimo', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + sessao.session.access_token
+      },
+      body: JSON.stringify({ competenciaReferencia: competencia })
+    });
+    const resultado = await resposta.json();
+
+    if(!resposta.ok){
+      throw new Error(resultado.error || 'Erro desconhecido ao buscar o salário mínimo.');
+    }
+
+    await fetch('/api/incrementar-ai-calls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + sessao.session.access_token
+      }
+    }).catch(err => console.log('Aviso: não foi possível contar uso de IA:', err));
+
+    status.dataset.tipo = 'ok';
+    status.textContent = 'Valor localizado. Revise antes de confirmar.';
+
+    document.getElementById('revisaoSalarioMinimoFonte').textContent = 'Fonte: ' + (resultado.fonte || 'não informada');
+    document.getElementById('revSalarioMinimoValor').value = resultado.valor != null ? resultado.valor : '';
+    document.getElementById('revSalarioMinimoVigencia').value = resultado.vigencia_inicio || '';
+    document.getElementById('cartaoRevisaoSalarioMinimo').style.display = 'block';
+  } catch(erro){
+    status.dataset.tipo = 'erro';
+    status.textContent = 'Não foi possível buscar automaticamente: ' + erro.message + '. Você pode cadastrar o valor manualmente em Configurações > Parâmetros de cálculo (identificador "salario_minimo").';
+  }
+
+  btn.disabled = false; btn.textContent = 'Buscar com IA';
+});
+
+document.getElementById('btnCancelarSalarioMinimo').addEventListener('click', () => {
+  document.getElementById('cartaoRevisaoSalarioMinimo').style.display = 'none';
+});
+
+document.getElementById('btnConfirmarSalarioMinimo').addEventListener('click', async () => {
+  const btn = document.getElementById('btnConfirmarSalarioMinimo');
+  const status = document.getElementById('statusBuscarSalarioMinimo');
+  const valor = parseFloat(document.getElementById('revSalarioMinimoValor').value);
+  const vigencia = document.getElementById('revSalarioMinimoVigencia').value;
+
+  if(isNaN(valor) || !vigencia){
+    alert('Preencha valor e vigência antes de confirmar.');
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const { error } = await sb.from('contracheque_parametros_calculo').insert({
+    chave: 'salario_minimo',
+    descricao: 'Salário mínimo nacional vigente',
+    tipo_valor: 'fixo',
+    valor,
+    vigencia_inicio: vigencia
+  });
+  btn.disabled = false; btn.textContent = 'Confirmar e salvar';
+
+  if(error){
+    status.dataset.tipo = 'erro'; status.textContent = 'Erro ao salvar: ' + error.message;
+    return;
+  }
+  status.dataset.tipo = 'ok'; status.textContent = 'Salário mínimo atualizado.';
+  document.getElementById('cartaoRevisaoSalarioMinimo').style.display = 'none';
+  await carregarParametros();
 });
 
 /* ---------- Busca automática de tabela oficial (INSS/IRRF) via IA ---------- */
@@ -1510,10 +1733,62 @@ function calcularProgressivo(base, faixas){
   };
 }
 
-function valorParametro(chave, padrao = 0){
+function valorParametro(chave, padrao = 0, dataReferencia = null){
+  const ref = dataReferencia || new Date().toISOString().slice(0, 10);
+  // Entre as linhas com essa chave, pega a de vigência mais recente que já
+  // começou até a data de referência (para suportar histórico, ex.: salário
+  // mínimo mudando de ano a ano).
+  const candidatas = cacheParametros
+    .filter(x => x.chave === chave && x.vigencia_inicio <= ref)
+    .sort((a, b) => b.vigencia_inicio.localeCompare(a.vigencia_inicio));
+  if(candidatas.length > 0) return Number(candidatas[0].valor);
   const p = cacheParametros.find(x => x.chave === chave);
   return p ? Number(p.valor) : padrao;
 }
+
+/* ---------- Lançamentos recorrentes (data + cálculo automático) ---------- */
+function calcularValorEventoRecorrente(rub, quantidade){
+  if(!rub || !rub.lancamento_recorrente || !quantidade) return null;
+  const qtd = Number(quantidade);
+  if(rub.unidade_calculo === 'valor_fixo_evento'){
+    const unit = valorParametro('valor_evento_' + rub.codigo, null);
+    return unit != null ? unit * qtd : null;
+  }
+  if(rub.unidade_calculo === 'salario_por_dia'){
+    if(!cacheSalarioAtual) return null;
+    const dias = valorParametro('dias_mes_referencia', 30);
+    return (Number(cacheSalarioAtual.valor) / dias) * qtd;
+  }
+  if(rub.unidade_calculo === 'salario_por_hora'){
+    if(!cacheSalarioAtual) return null;
+    const horas = valorParametro('carga_horaria_mensal', 220);
+    return (Number(cacheSalarioAtual.valor) / horas) * qtd;
+  }
+  return null; // sem_calculo
+}
+
+document.getElementById('lancRubrica').addEventListener('change', (ev) => {
+  const codigo = ev.target.value;
+  const rub = cacheRubricas.find(r => r.codigo === codigo);
+  const ajuda = document.getElementById('lancAjudaRecorrente');
+  const campoData = document.getElementById('lancDataEvento');
+  const campoQtd = document.getElementById('lancQuantidade');
+  const campoDesc = document.getElementById('lancDescricao');
+
+  if(rub && rub.lancamento_recorrente){
+    if(!campoData.value) campoData.value = new Date().toISOString().slice(0, 10);
+    if(!campoQtd.value) campoQtd.value = '1';
+    if(!campoDesc.value) campoDesc.value = rub.descricao;
+    ajuda.style.display = 'block';
+    if(rub.unidade_calculo === 'sem_calculo'){
+      ajuda.textContent = 'Rubrica recorrente: essa rubrica só registra data e quantidade — não gera valor automático. Preencha "Valor calculado" manualmente se necessário.';
+    } else {
+      ajuda.textContent = 'Rubrica recorrente: o valor será calculado automaticamente com base na quantidade, a não ser que você preencha "Valor calculado" manualmente. Depois de salvar, é só voltar aqui e clicar em Adicionar de novo para o próximo dia.';
+    }
+  } else {
+    ajuda.style.display = 'none';
+  }
+});
 
 async function atualizarCalculoAutomatico(lancamentosDoMes){
   const elBase = document.getElementById('calcBaseBruta');
@@ -1632,6 +1907,7 @@ async function carregarLancamentos(){
     corpo.innerHTML = data.map(l => `
       <tr>
         <td>${dataParaMesLabel(l.mes_referencia)}</td>
+        <td>${l.data_evento ? new Date(l.data_evento + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
         <td>${l.rubrica_codigo || '—'}</td>
         <td>${l.descricao}</td>
         <td class="numero">${l.quantidade != null ? l.quantidade : ''}</td>
@@ -1642,8 +1918,50 @@ async function carregarLancamentos(){
   }
 
   atualizarResumoMes(data || [], mesInput);
+  atualizarRecorrentesMes(data || []);
   await atualizarCalculoAutomatico(data || []);
   await carregarItensOficiaisDoMes(mesData);
+}
+
+function atualizarRecorrentesMes(lancamentos){
+  const container = document.getElementById('listaRecorrentesMes');
+  const vazio = document.getElementById('vazioRecorrentesMes');
+
+  const recorrentes = (lancamentos || []).filter(l => {
+    const rub = cacheRubricas.find(r => r.codigo === l.rubrica_codigo);
+    return rub && rub.lancamento_recorrente;
+  });
+
+  if(recorrentes.length === 0){
+    container.innerHTML = '';
+    vazio.style.display = 'block';
+    return;
+  }
+  vazio.style.display = 'none';
+
+  const porRubrica = {};
+  recorrentes.forEach(l => {
+    if(!porRubrica[l.rubrica_codigo]) porRubrica[l.rubrica_codigo] = [];
+    porRubrica[l.rubrica_codigo].push(l);
+  });
+
+  container.innerHTML = Object.entries(porRubrica).map(([codigo, itens]) => {
+    const rub = cacheRubricas.find(r => r.codigo === codigo);
+    const totalQtd = itens.reduce((s, l) => s + (Number(l.quantidade) || 0), 0);
+    const totalValor = itens.reduce((s, l) => s + (l.valor_calculado != null ? Number(l.valor_calculado) : 0), 0);
+    const datas = itens
+      .filter(l => l.data_evento)
+      .sort((a, b) => a.data_evento.localeCompare(b.data_evento))
+      .map(l => new Date(l.data_evento + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }));
+
+    return `
+      <div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--borda, #333);">
+        <strong>${rub ? rub.descricao : codigo}</strong>
+        <span style="opacity:.75;"> — ${itens.length} registro(s), total ${totalQtd}${totalValor > 0 ? ', ' + formatarMoeda(totalValor) : ''}</span>
+        <div style="margin-top:6px;font-size:0.9em;opacity:.85;">${datas.length ? datas.join(', ') : 'Sem datas registradas nestes lançamentos.'}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 /* ---------- Confirmação / trava do mês ---------- */
@@ -1791,12 +2109,22 @@ document.getElementById('formLancamento').addEventListener('submit', async (ev) 
   ev.preventDefault();
   const mes = document.getElementById('lancMes').value;
   const rubrica = document.getElementById('lancRubrica').value || null;
+  const dataEvento = document.getElementById('lancDataEvento').value || null;
   const descricao = document.getElementById('lancDescricao').value.trim();
   const quantidade = document.getElementById('lancQuantidade').value;
   const valor = document.getElementById('lancValor').value;
   const obs = document.getElementById('lancObs').value.trim();
   const status = document.getElementById('statusLancamento');
   const btn = document.getElementById('btnSalvarLancamento');
+
+  // Se o campo "Valor" foi deixado em branco e a rubrica é recorrente com
+  // cálculo automático, calcula a partir do salário-base/parâmetros.
+  let valorFinal = valor ? parseFloat(valor) : null;
+  if(valorFinal == null && rubrica){
+    const rub = cacheRubricas.find(r => r.codigo === rubrica);
+    const calculado = calcularValorEventoRecorrente(rub, quantidade);
+    if(calculado != null) valorFinal = Math.round(calculado * 100) / 100;
+  }
 
   if(!mes || !descricao){
     status.dataset.tipo = 'erro'; status.textContent = 'Preencha ao menos mês e descrição.';
@@ -1818,9 +2146,10 @@ document.getElementById('formLancamento').addEventListener('submit', async (ev) 
   const { error } = await sb.from('contracheque_lancamentos_mes').insert({
     mes_referencia: mesParaData(mes),
     rubrica_codigo: rubrica,
+    data_evento: dataEvento,
     descricao,
     quantidade: quantidade ? parseFloat(quantidade) : null,
-    valor_calculado: valor ? parseFloat(valor) : null,
+    valor_calculado: valorFinal,
     observacoes: obs || null
   });
   btn.disabled = false; btn.textContent = 'Adicionar lançamento';
@@ -1829,10 +2158,11 @@ document.getElementById('formLancamento').addEventListener('submit', async (ev) 
     status.dataset.tipo = 'erro'; status.textContent = 'Erro: ' + error.message;
     return;
   }
-  status.dataset.tipo = 'ok'; status.textContent = 'Lançamento adicionado.';
+  status.dataset.tipo = 'ok'; status.textContent = 'Lançamento adicionado.' + (valorFinal == null && rubrica && cacheRubricas.find(r => r.codigo === rubrica)?.lancamento_recorrente && cacheRubricas.find(r => r.codigo === rubrica)?.unidade_calculo === 'valor_fixo_evento' ? ' Cadastre o "valor por evento" em Configurações para calcular o valor automaticamente.' : '');
   document.getElementById('formLancamento').reset();
   document.getElementById('lancMes').value = mes;
   document.getElementById('filtroMesLancamentos').value = mes;
+  document.getElementById('lancAjudaRecorrente').style.display = 'none';
   await carregarLancamentos();
 });
 
