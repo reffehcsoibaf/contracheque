@@ -238,6 +238,25 @@
     margin: 0 0 16px;
   }
 
+  .divisor-secao{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 32px 0 16px;
+    color: var(--brass);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .divisor-secao::after{
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--ink-3);
+  }
+  .divisor-secao:first-child{ margin-top: 0; }
+
   .linha-form{
     display: flex;
     gap: 12px;
@@ -350,17 +369,15 @@
   <section id="telaApp" class="visually-hidden" aria-hidden="true">
 
     <nav class="abas" role="tablist" aria-label="Seções do Contracheque">
-      <button type="button" role="tab" id="tabResumo" aria-controls="painelResumo" aria-selected="true" title="Alt+1">Resumo</button>
-      <button type="button" role="tab" id="tabLancamentos" aria-controls="painelLancamentos" aria-selected="false" title="Alt+2">Lançamentos do mês</button>
+      <button type="button" role="tab" id="tabLancamentos" aria-controls="painelLancamentos" aria-selected="true" title="Alt+1">Lançamentos do mês</button>
+      <button type="button" role="tab" id="tabResumo" aria-controls="painelResumo" aria-selected="false" title="Alt+2">Resumo</button>
       <button type="button" role="tab" id="tabOficial" aria-controls="painelOficial" aria-selected="false" title="Alt+3">Contracheque oficial</button>
       <button type="button" role="tab" id="tabOriginais" aria-controls="painelOriginais" aria-selected="false" title="Alt+4">Contracheques originais</button>
-      <button type="button" role="tab" id="tabRubricas" aria-controls="painelRubricas" aria-selected="false" title="Alt+5">Rubricas</button>
-      <button type="button" role="tab" id="tabConfig" aria-controls="painelConfig" aria-selected="false" title="Alt+6">Configurações</button>
-      <button type="button" role="tab" id="tabTabelas" aria-controls="painelTabelas" aria-selected="false" title="Alt+7">Tabelas INSS/IRRF</button>
+      <button type="button" role="tab" id="tabConfig" aria-controls="painelConfig" aria-selected="false" title="Alt+5">Configurações</button>
     </nav>
 
     <!-- ---------- RESUMO ---------- -->
-    <div class="painel-aba ativo" id="painelResumo" role="tabpanel" aria-labelledby="tabResumo">
+    <div class="painel-aba" id="painelResumo" role="tabpanel" aria-labelledby="tabResumo">
       <div class="cartao">
         <h2>Salário-base atual</h2>
         <p class="subtexto">Usado como referência para os cálculos automáticos.</p>
@@ -428,7 +445,7 @@
     </div>
 
     <!-- ---------- LANÇAMENTOS DO MÊS ---------- -->
-    <div class="painel-aba" id="painelLancamentos" role="tabpanel" aria-labelledby="tabLancamentos">
+    <div class="painel-aba ativo" id="painelLancamentos" role="tabpanel" aria-labelledby="tabLancamentos">
       <div class="cartao" id="cartaoStatusMes">
         <h2>Status do mês</h2>
         <p class="subtexto" id="statusMesTexto">Selecione um mês para ver o status.</p>
@@ -635,7 +652,80 @@
     </div>
 
     <!-- ---------- RUBRICAS ---------- -->
-    <div class="painel-aba" id="painelRubricas" role="tabpanel" aria-labelledby="tabRubricas">
+    <!-- ---------- CONFIGURAÇÕES ---------- -->
+    <div class="painel-aba" id="painelConfig" role="tabpanel" aria-labelledby="tabConfig">
+      <div class="cartao">
+        <h2>Salário-base</h2>
+        <p class="subtexto">Atualize quando houver reajuste. O histórico de valores anteriores é mantido.</p>
+        <form id="formSalarioBase" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="sbValor">Novo valor (R$)</label>
+              <input type="number" id="sbValor" step="0.01" required>
+            </div>
+            <div class="campo">
+              <label for="sbVigencia">Vigente a partir de</label>
+              <input type="date" id="sbVigencia" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primario" id="btnSalvarSalario" style="margin-top:12px;">Salvar novo valor</button>
+        </form>
+        <p class="status-msg" id="statusSalario" role="status" aria-live="polite"></p>
+        <div class="tabela-scroll" style="margin-top:16px;">
+          <table id="tabelaHistoricoSalario">
+            <thead><tr><th>Vigência</th><th class="numero">Valor</th><th>Observação</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="cartao">
+        <h2>Valor por evento (rubricas recorrentes)</h2>
+        <p class="subtexto">Para rubricas marcadas como "recorrente" com cálculo "Valor fixo/evento" (ex.: refeição industrial) — defina aqui quanto vale 1 evento. Falta e atraso não precisam disso: são calculados a partir do salário-base (veja os parâmetros "dias_mes_referencia" e "carga_horaria_mensal" abaixo).</p>
+        <div id="listaValorEvento"></div>
+        <p class="vazio" id="vazioValorEvento">Nenhuma rubrica com cálculo "Valor fixo/evento" cadastrada ainda.</p>
+      </div>
+
+      <div class="cartao">
+        <h2>Parâmetros de cálculo</h2>
+        <p class="subtexto">Percentuais e valores usados nos cálculos automáticos (insalubridade, adicional por tempo de serviço, etc.).</p>
+        <form id="formParametro" novalidate>
+          <div class="linha-form">
+            <div class="campo">
+              <label for="parChave">Identificador</label>
+              <input type="text" id="parChave" required placeholder="Ex.: insalubridade">
+            </div>
+            <div class="campo">
+              <label for="parDescricao">Descrição</label>
+              <input type="text" id="parDescricao" placeholder="Ex.: Percentual de insalubridade">
+            </div>
+          </div>
+          <div class="linha-form" style="margin-top:12px;">
+            <div class="campo">
+              <label for="parTipo">Tipo</label>
+              <select id="parTipo">
+                <option value="percentual">Percentual</option>
+                <option value="fixo">Valor fixo</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="parValor">Valor</label>
+              <input type="number" id="parValor" step="0.01" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primario" id="btnSalvarParametro" style="margin-top:12px;">Salvar parâmetro</button>
+        </form>
+        <p class="status-msg" id="statusParametro" role="status" aria-live="polite"></p>
+        <div class="tabela-scroll" style="margin-top:16px;">
+          <table id="tabelaParametros">
+            <thead><tr><th>Identificador</th><th>Descrição</th><th class="numero">Valor</th><th>Vigência</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="divisor-secao">Rubricas</div>
+
       <div class="cartao">
         <h2>Nova rubrica</h2>
         <p class="subtexto">Cadastre códigos que ainda não constam no catálogo (ex.: hora extra, quando aparecer).</p>
@@ -711,83 +801,9 @@
           </table>
         </div>
       </div>
-    </div>
 
-    <!-- ---------- CONFIGURAÇÕES ---------- -->
-    <div class="painel-aba" id="painelConfig" role="tabpanel" aria-labelledby="tabConfig">
-      <div class="cartao">
-        <h2>Salário-base</h2>
-        <p class="subtexto">Atualize quando houver reajuste. O histórico de valores anteriores é mantido.</p>
-        <form id="formSalarioBase" novalidate>
-          <div class="linha-form">
-            <div class="campo">
-              <label for="sbValor">Novo valor (R$)</label>
-              <input type="number" id="sbValor" step="0.01" required>
-            </div>
-            <div class="campo">
-              <label for="sbVigencia">Vigente a partir de</label>
-              <input type="date" id="sbVigencia" required>
-            </div>
-          </div>
-          <button type="submit" class="btn-primario" id="btnSalvarSalario" style="margin-top:12px;">Salvar novo valor</button>
-        </form>
-        <p class="status-msg" id="statusSalario" role="status" aria-live="polite"></p>
-        <div class="tabela-scroll" style="margin-top:16px;">
-          <table id="tabelaHistoricoSalario">
-            <thead><tr><th>Vigência</th><th class="numero">Valor</th><th>Observação</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="divisor-secao">Tabelas INSS / IRRF</div>
 
-      <div class="cartao">
-        <h2>Valor por evento (rubricas recorrentes)</h2>
-        <p class="subtexto">Para rubricas marcadas como "recorrente" com cálculo "Valor fixo/evento" (ex.: refeição industrial) — defina aqui quanto vale 1 evento. Falta e atraso não precisam disso: são calculados a partir do salário-base (veja os parâmetros "dias_mes_referencia" e "carga_horaria_mensal" abaixo).</p>
-        <div id="listaValorEvento"></div>
-        <p class="vazio" id="vazioValorEvento">Nenhuma rubrica com cálculo "Valor fixo/evento" cadastrada ainda.</p>
-      </div>
-
-      <div class="cartao">
-        <h2>Parâmetros de cálculo</h2>
-        <p class="subtexto">Percentuais e valores usados nos cálculos automáticos (insalubridade, adicional por tempo de serviço, etc.).</p>
-        <form id="formParametro" novalidate>
-          <div class="linha-form">
-            <div class="campo">
-              <label for="parChave">Identificador</label>
-              <input type="text" id="parChave" required placeholder="Ex.: insalubridade">
-            </div>
-            <div class="campo">
-              <label for="parDescricao">Descrição</label>
-              <input type="text" id="parDescricao" placeholder="Ex.: Percentual de insalubridade">
-            </div>
-          </div>
-          <div class="linha-form" style="margin-top:12px;">
-            <div class="campo">
-              <label for="parTipo">Tipo</label>
-              <select id="parTipo">
-                <option value="percentual">Percentual</option>
-                <option value="fixo">Valor fixo</option>
-              </select>
-            </div>
-            <div class="campo">
-              <label for="parValor">Valor</label>
-              <input type="number" id="parValor" step="0.01" required>
-            </div>
-          </div>
-          <button type="submit" class="btn-primario" id="btnSalvarParametro" style="margin-top:12px;">Salvar parâmetro</button>
-        </form>
-        <p class="status-msg" id="statusParametro" role="status" aria-live="polite"></p>
-        <div class="tabela-scroll" style="margin-top:16px;">
-          <table id="tabelaParametros">
-            <thead><tr><th>Identificador</th><th>Descrição</th><th class="numero">Valor</th><th>Vigência</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ---------- TABELAS OFICIAIS (INSS/IRRF) ---------- -->
-    <div class="painel-aba" id="painelTabelas" role="tabpanel" aria-labelledby="tabTabelas">
       <div class="cartao">
         <h2>Salário mínimo nacional</h2>
         <p class="subtexto">Usa IA com busca na web para localizar o valor vigente do salário mínimo nacional, direto de fontes oficiais. Impacta o cálculo de insalubridade (20% do salário mínimo). Sempre revise antes de confirmar.</p>
@@ -1017,7 +1033,7 @@ document.getElementById('btnSair').addEventListener('click', async () => {
 });
 
 /* ---------- Abas ---------- */
-const abas = ['Resumo','Lancamentos','Oficial','Originais','Rubricas','Config','Tabelas'];
+const abas = ['Lancamentos','Resumo','Oficial','Originais','Config'];
 
 function ativarAba(nome){
   abas.forEach(outra => {
