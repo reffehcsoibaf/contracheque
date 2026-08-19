@@ -1904,23 +1904,101 @@ async function carregarLancamentos(){
     vazio.style.display = 'block';
   } else {
     vazio.style.display = 'none';
-    corpo.innerHTML = data.map(l => `
-      <tr>
-        <td>${dataParaMesLabel(l.mes_referencia)}</td>
-        <td>${l.data_evento ? new Date(l.data_evento + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
-        <td>${l.rubrica_codigo || '—'}</td>
-        <td>${l.descricao}</td>
-        <td class="numero">${l.quantidade != null ? l.quantidade : ''}</td>
-        <td class="numero">${l.valor_calculado != null ? formatarMoeda(l.valor_calculado) : ''}</td>
-        <td>${confirmado ? '' : `<button type="button" class="btn-perigo" data-id="${l.id}" data-acao="excluir-lancamento">Excluir</button>`}</td>
-      </tr>
-    `).join('');
+    corpo.innerHTML = renderLinhasLancamentos(data, confirmado);
   }
 
   atualizarResumoMes(data || [], mesInput);
   atualizarRecorrentesMes(data || []);
   await atualizarCalculoAutomatico(data || []);
   await carregarItensOficiaisDoMes(mesData);
+}
+
+function renderLinhasLancamentos(data, confirmado){
+  // Agrupa por rubrica_codigo (quando existe). Lançamentos sem rubrica
+  // associada (texto livre) ficam sempre soltos, um por linha.
+  const grupos = {};
+  const soltos = [];
+  data.forEach(l => {
+    if(l.rubrica_codigo){
+      if(!grupos[l.rubrica_codigo]) grupos[l.rubrica_codigo] = [];
+      grupos[l.rubrica_codigo].push(l);
+    } else {
+      soltos.push(l);
+    }
+  });
+
+  const linhaDetalhe = (l, codigoGrupo) => `
+    <tr class="linha-detalhe" data-grupo="${codigoGrupo || ''}" style="display:none;background:rgba(255,255,255,0.03);">
+      <td></td>
+      <td>${l.data_evento ? new Date(l.data_evento + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+      <td></td>
+      <td style="padding-left:20px;">${l.descricao}${l.observacoes ? ' <span style="opacity:.6;">— ' + l.observacoes + '</span>' : ''}</td>
+      <td class="numero">${l.quantidade != null ? l.quantidade : ''}</td>
+      <td class="numero">${l.valor_calculado != null ? formatarMoeda(l.valor_calculado) : ''}</td>
+      <td>${confirmado ? '' : `<button type="button" class="btn-perigo" data-id="${l.id}" data-acao="excluir-lancamento">Excluir</button>`}</td>
+    </tr>
+  `;
+
+  let html = '';
+
+  Object.entries(grupos).forEach(([codigo, itens]) => {
+    const rub = cacheRubricas.find(r => r.codigo === codigo);
+    const descricaoRubrica = rub ? rub.descricao : (itens[0].descricao || codigo);
+
+    if(itens.length === 1){
+      // Grupo com um único lançamento: mostra direto, sem cabeçalho de grupo.
+      const l = itens[0];
+      html += `
+        <tr>
+          <td>${dataParaMesLabel(l.mes_referencia)}</td>
+          <td>${l.data_evento ? new Date(l.data_evento + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+          <td>${codigo}</td>
+          <td>${l.descricao}</td>
+          <td class="numero">${l.quantidade != null ? l.quantidade : ''}</td>
+          <td class="numero">${l.valor_calculado != null ? formatarMoeda(l.valor_calculado) : ''}</td>
+          <td>${confirmado ? '' : `<button type="button" class="btn-perigo" data-id="${l.id}" data-acao="excluir-lancamento">Excluir</button>`}</td>
+        </tr>
+      `;
+      return;
+    }
+
+    const somaQtd = itens.reduce((s, l) => s + (Number(l.quantidade) || 0), 0);
+    const somaValor = itens.reduce((s, l) => s + (l.valor_calculado != null ? Number(l.valor_calculado) : 0), 0);
+    const temValor = itens.some(l => l.valor_calculado != null);
+
+    html += `
+      <tr class="linha-grupo" data-grupo="${codigo}" style="cursor:pointer;font-weight:600;">
+        <td>${dataParaMesLabel(itens[0].mes_referencia)}</td>
+        <td><button type="button" class="btn-expandir" data-grupo="${codigo}" aria-expanded="false" style="background:none;border:none;color:inherit;font:inherit;cursor:pointer;padding:0;">▸ ${itens.length} lançamentos</button></td>
+        <td>${codigo}</td>
+        <td>${descricaoRubrica}</td>
+        <td class="numero">${somaQtd || ''}</td>
+        <td class="numero">${temValor ? formatarMoeda(somaValor) : ''}</td>
+        <td></td>
+      </tr>
+    `;
+    html += itens
+      .slice()
+      .sort((a, b) => (a.data_evento || '').localeCompare(b.data_evento || ''))
+      .map(l => linhaDetalhe(l, codigo))
+      .join('');
+  });
+
+  soltos.forEach(l => {
+    html += `
+      <tr>
+        <td>${dataParaMesLabel(l.mes_referencia)}</td>
+        <td>${l.data_evento ? new Date(l.data_evento + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+        <td>—</td>
+        <td>${l.descricao}</td>
+        <td class="numero">${l.quantidade != null ? l.quantidade : ''}</td>
+        <td class="numero">${l.valor_calculado != null ? formatarMoeda(l.valor_calculado) : ''}</td>
+        <td>${confirmado ? '' : `<button type="button" class="btn-perigo" data-id="${l.id}" data-acao="excluir-lancamento">Excluir</button>`}</td>
+      </tr>
+    `;
+  });
+
+  return html;
 }
 
 function atualizarRecorrentesMes(lancamentos){
@@ -2167,11 +2245,30 @@ document.getElementById('formLancamento').addEventListener('submit', async (ev) 
 });
 
 document.querySelector('#tabelaLancamentos tbody').addEventListener('click', async (ev) => {
-  const btn = ev.target.closest('button[data-acao="excluir-lancamento"]');
-  if(!btn) return;
-  if(!confirm('Excluir este lançamento?')) return;
-  await sb.from('contracheque_lancamentos_mes').delete().eq('id', btn.dataset.id);
-  await carregarLancamentos();
+  const btnExcluir = ev.target.closest('button[data-acao="excluir-lancamento"]');
+  if(btnExcluir){
+    if(!confirm('Excluir este lançamento?')) return;
+    await sb.from('contracheque_lancamentos_mes').delete().eq('id', btnExcluir.dataset.id);
+    await carregarLancamentos();
+    return;
+  }
+
+  const btnExpandir = ev.target.closest('button.btn-expandir');
+  if(btnExpandir){
+    const codigo = btnExpandir.dataset.grupo;
+    const expandido = btnExpandir.getAttribute('aria-expanded') === 'true';
+    document.querySelectorAll('tr.linha-detalhe[data-grupo="' + CSS.escape(codigo) + '"]').forEach(tr => {
+      tr.style.display = expandido ? 'none' : 'table-row';
+    });
+    btnExpandir.setAttribute('aria-expanded', expandido ? 'false' : 'true');
+    btnExpandir.textContent = (expandido ? '▸ ' : '▾ ') + btnExpandir.textContent.slice(2);
+    return;
+  }
+
+  const linhaGrupo = ev.target.closest('tr.linha-grupo');
+  if(linhaGrupo && !ev.target.closest('button')){
+    linhaGrupo.querySelector('button.btn-expandir')?.click();
+  }
 });
 
 /* ---------- Contracheque oficial (upload) ---------- */
